@@ -17,8 +17,8 @@ class ENT_Assistant_v3(ScriptedLoadableModule):
         parent.title = "ENT Assistant v3"
         parent.categories = ["ENT"]
         parent.contributors = ["ENT AI Assistant (2026)"]
-        parent.helpText = "Автоматизированный анализ КТ околоносовых пазух"
-        parent.acknowledgementText = "Не заменяет клиническое решение врача"
+        parent.helpText = "ENT Development Environment"
+        parent.acknowledgementText = "Dev + Git integrated version"
 
 
 #
@@ -33,39 +33,53 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         super().setup()
         layout = self.layout
 
-        layout.addWidget(qt.QLabel("<h2>ENT Assistant v3</h2>"))
+        layout.addWidget(qt.QLabel("<h2>ENT Assistant v3 - Dev Mode</h2>"))
 
-        # -------------------------------
-        # Запуск 3D Pipeline
-        # -------------------------------
+        # --------------------------------
+        # LOR 3D Pipeline
+        # --------------------------------
         self.runBtn = qt.QPushButton("🚀 Запустить LOR 3D Pipeline")
         layout.addWidget(self.runBtn)
         self.runBtn.clicked.connect(self.runPipeline)
 
-        # -------------------------------
+        # --------------------------------
+        # DEV Script
+        # --------------------------------
+        self.devBtn = qt.QPushButton("🧪 Запустить DEV Script")
+        layout.addWidget(self.devBtn)
+        self.devBtn.clicked.connect(self.runDevScript)
+
+        # --------------------------------
         # Git Update
-        # -------------------------------
-        self.updateBtn = qt.QPushButton("🔄 Обновить из GitHub")
+        # --------------------------------
+        self.updateBtn = qt.QPushButton("🔄 Git Pull (Обновить)")
         layout.addWidget(self.updateBtn)
         self.updateBtn.clicked.connect(self.updateFromGit)
 
-        # -------------------------------
+        # --------------------------------
+        # Git Save + Push
+        # --------------------------------
+        self.pushBtn = qt.QPushButton("💾 Git Save + Push")
+        layout.addWidget(self.pushBtn)
+        self.pushBtn.clicked.connect(self.saveAndPush)
+
+        # --------------------------------
         # Reload Module
-        # -------------------------------
+        # --------------------------------
         self.reloadBtn = qt.QPushButton("♻ Reload Module")
         layout.addWidget(self.reloadBtn)
         self.reloadBtn.clicked.connect(self.reloadModule)
 
-        # Output field
+        # Output
         self.output = qt.QTextEdit()
         self.output.setReadOnly(True)
         layout.addWidget(self.output)
 
+
     # ===============================
-    # RUN PIPELINE
+    # RUN LOR PIPELINE
     # ===============================
     def runPipeline(self):
-
         try:
             script_path = os.path.abspath(
                 os.path.join(os.path.dirname(__file__), "..", "slicer_scripts", "ENT_LOR_3D_PIPELINE.py")
@@ -73,16 +87,33 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
 
             exec(open(script_path).read())
 
-            self.output.setText("✅ Pipeline выполнен успешно")
+            self.output.setText("✅ LOR 3D Pipeline выполнен")
 
         except Exception as e:
-            self.output.setText(f"❌ Ошибка:\n{str(e)}")
+            self.output.setText(f"❌ Ошибка Pipeline:\n{str(e)}")
+
 
     # ===============================
-    # GIT UPDATE
+    # RUN DEV SCRIPT
+    # ===============================
+    def runDevScript(self):
+        try:
+            script_path = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), "..", "slicer_scripts", "dev.py")
+            )
+
+            exec(open(script_path).read())
+
+            self.output.setText("✅ DEV script выполнен")
+
+        except Exception as e:
+            self.output.setText(f"❌ Ошибка DEV:\n{str(e)}")
+
+
+    # ===============================
+    # GIT PULL
     # ===============================
     def updateFromGit(self):
-
         try:
             repo_path = os.path.abspath(
                 os.path.join(os.path.dirname(__file__), "..")
@@ -96,12 +127,45 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             )
 
             if result.returncode == 0:
-                self.output.setText("✅ Обновление выполнено\n\n" + result.stdout)
+                self.output.setText("✅ Git Pull выполнен\n\n" + result.stdout)
             else:
-                self.output.setText("❌ Ошибка обновления\n\n" + result.stderr)
+                self.output.setText("❌ Git Pull ошибка\n\n" + result.stderr)
 
         except Exception as e:
             self.output.setText(f"❌ Ошибка:\n{str(e)}")
+
+
+    # ===============================
+    # GIT ADD + COMMIT + PUSH
+    # ===============================
+    def saveAndPush(self):
+        try:
+            repo_path = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), "..")
+            )
+
+            subprocess.run(["git", "add", "."], cwd=repo_path)
+
+            subprocess.run(
+                ["git", "commit", "-m", "Auto update from ENT module"],
+                cwd=repo_path
+            )
+
+            result = subprocess.run(
+                ["git", "push"],
+                cwd=repo_path,
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode == 0:
+                self.output.setText("✅ Git Push выполнен\n\n" + result.stdout)
+            else:
+                self.output.setText("⚠ Возможно нет изменений\n\n" + result.stderr)
+
+        except Exception as e:
+            self.output.setText(f"❌ Ошибка Push:\n{str(e)}")
+
 
     # ===============================
     # RELOAD MODULE
