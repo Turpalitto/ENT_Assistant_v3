@@ -1,24 +1,31 @@
+import os
+import subprocess
 import slicer
 import qt
-import numpy as np
 from slicer.ScriptedLoadableModule import *
 
-# ======================================================
+
+#
+# ===============================
 # MODULE
-# ======================================================
+# ===============================
+#
 
 class ENT_Assistant_v3(ScriptedLoadableModule):
     def __init__(self, parent):
         super().__init__(parent)
         parent.title = "ENT Assistant v3"
         parent.categories = ["ENT"]
-        parent.helpText = "Корректный 3D головы и пазух (Segmentation)"
+        parent.contributors = ["ENT AI Assistant (2026)"]
+        parent.helpText = "Автоматизированный анализ КТ околоносовых пазух"
         parent.acknowledgementText = "Не заменяет клиническое решение врача"
 
 
-# ======================================================
+#
+# ===============================
 # WIDGET
-# ======================================================
+# ===============================
+#
 
 class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
 
@@ -26,154 +33,78 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         super().setup()
         layout = self.layout
 
-        layout.addWidget(qt.QLabel("<h3>ENT Assistant v3 — 3D</h3>"))
+        layout.addWidget(qt.QLabel("<h2>ENT Assistant v3</h2>"))
 
-        self.btnVisual = qt.QPushButton("👤 Visual 3D")
-        self.btnSurg   = qt.QPushButton("🦴 Surgical 3D")
-        self.btnSkin   = qt.QPushButton("Кожа Вкл/Выкл")
-        self.btnBone   = qt.QPushButton("Кость Вкл/Выкл")
-        self.btnAir    = qt.QPushButton("Воздух Вкл/Выкл")
+        # -------------------------------
+        # Запуск 3D Pipeline
+        # -------------------------------
+        self.runBtn = qt.QPushButton("🚀 Запустить LOR 3D Pipeline")
+        layout.addWidget(self.runBtn)
+        self.runBtn.clicked.connect(self.runPipeline)
 
-        for b in [self.btnVisual, self.btnSurg, self.btnSkin, self.btnBone, self.btnAir]:
-            layout.addWidget(b)
+        # -------------------------------
+        # Git Update
+        # -------------------------------
+        self.updateBtn = qt.QPushButton("🔄 Обновить из GitHub")
+        layout.addWidget(self.updateBtn)
+        self.updateBtn.clicked.connect(self.updateFromGit)
 
-        self.logic = ENT_Assistant_v3Logic()
+        # -------------------------------
+        # Reload Module
+        # -------------------------------
+        self.reloadBtn = qt.QPushButton("♻ Reload Module")
+        layout.addWidget(self.reloadBtn)
+        self.reloadBtn.clicked.connect(self.reloadModule)
 
-        self.btnVisual.clicked.connect(self.logic.buildVisual3D)
-        self.btnSurg.clicked.connect(self.logic.buildSurgical3D)
-        self.btnSkin.clicked.connect(lambda: self.logic.toggle("Skin"))
-        self.btnBone.clicked.connect(lambda: self.logic.toggle("Bone"))
-        self.btnAir.clicked.connect(lambda: self.logic.toggle("Air"))
+        # Output field
+        self.output = qt.QTextEdit()
+        self.output.setReadOnly(True)
+        layout.addWidget(self.output)
 
+    # ===============================
+    # RUN PIPELINE
+    # ===============================
+    def runPipeline(self):
 
-# ======================================================
-# LOGIC
-# ======================================================
+        try:
+            script_path = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), "..", "slicer_scripts", "ENT_LOR_3D_PIPELINE.py")
+            )
 
-class ENT_Assistant_v3Logic(ScriptedLoadableModuleLogic):
+            exec(open(script_path).read())
 
-    # -----------------------------
-    # Get CT
-    # -----------------------------
-    def _getCT(self):
-        for v in slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode"):
-            arr = slicer.util.arrayFromVolume(v)
-            if arr is not None and arr.ndim == 3:
-                return v, arr
-        raise RuntimeError("КТ не найдено")
+            self.output.setText("✅ Pipeline выполнен успешно")
 
-    # -----------------------------
-    # Find skull bottom by bone drop
-    # -----------------------------
-    def _findSkullBottomZ(self, boneMask):
-        boneCount = boneMask.sum(axis=(1, 2))
-        maxVal = boneCount.max()
+        except Exception as e:
+            self.output.setText(f"❌ Ошибка:\n{str(e)}")
 
-        if maxVal == 0:
-            return int(len(boneCount) * 0.75)
+    # ===============================
+    # GIT UPDATE
+    # ===============================
+    def updateFromGit(self):
 
-        norm = boneCount / maxVal
+        try:
+            repo_path = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), "..")
+            )
 
-        for z in range(len(norm) - 1):
-            if norm[z] > 0.15 and norm[z + 1] < 0.05:
-                return z + 1
+            result = subprocess.run(
+                ["git", "pull"],
+                cwd=repo_path,
+                capture_output=True,
+                text=True
+            )
 
-        return int(len(norm) * 0.75)
+            if result.returncode == 0:
+                self.output.setText("✅ Обновление выполнено\n\n" + result.stdout)
+            else:
+                self.output.setText("❌ Ошибка обновления\n\n" + result.stderr)
 
-    # -----------------------------
-    # Build anatomical body mask
-    # -----------------------------
-    def _buildBodyMask(self, arr):
-        body = arr > -500
-        bone = arr > 300
+        except Exception as e:
+            self.output.setText(f"❌ Ошибка:\n{str(e)}")
 
-        zBottom = self._findSkullBottomZ(bone)
-        body[zBottom:, :, :] = False
-
-        return body
-
-    # -----------------------------
-    # Labelmap helper
-    # -----------------------------
-    def _createLabelmap(self, vol, mask, name):
-        lm = slicer.mrmlScene.AddNewNodeByClass(
-            "vtkMRMLLabelMapVolumeNode", name
-        )
-        slicer.util.updateVolumeFromArray(lm, mask.astype(np.uint8))
-        lm.CopyOrientation(vol)
-        lm.SetSpacing(vol.GetSpacing())
-        lm.SetOrigin(vol.GetOrigin())
-        return lm
-
-    # -----------------------------
-    # Build segmentation + 3D
-    # -----------------------------
-    def _buildSegmentation(self, vol, skin, bone, air):
-        self.segNode = slicer.mrmlScene.AddNewNodeByClass(
-            "vtkMRMLSegmentationNode", "ENT_3D"
-        )
-        self.segNode.CreateDefaultDisplayNodes()
-        self.segNode.SetReferenceImageGeometryParameterFromVolumeNode(vol)
-
-        logic = slicer.modules.segmentations.logic()
-
-        def addSegment(mask, name, color):
-            lm = self._createLabelmap(vol, mask, name + "_LM")
-            segId = self.segNode.GetSegmentation().AddEmptySegment(name)
-            self.segNode.GetSegmentation().GetSegment(segId).SetColor(*color)
-            logic.ImportLabelmapToSegmentationNode(lm, self.segNode, segId)
-            slicer.mrmlScene.RemoveNode(lm)
-
-        addSegment(skin, "Skin", (1.0, 0.8, 0.6))
-        addSegment(bone, "Bone", (0.95, 0.95, 0.95))
-        addSegment(air,  "Air",  (0.2, 0.6, 1.0))
-
-        # ===== КЛЮЧЕВОЕ ДЛЯ 3D =====
-        self.segNode.CreateClosedSurfaceRepresentation()
-
-        disp = self.segNode.GetDisplayNode()
-        disp.SetPreferredDisplayRepresentationName3D("Closed surface")
-        disp.SetVisibility3D(True)
-
-        disp.SetSegmentOpacity3D("Skin", 0.25)
-        disp.SetSegmentOpacity3D("Bone", 0.6)
-        disp.SetSegmentOpacity3D("Air",  0.9)
-
-        slicer.app.layoutManager().setLayout(
-            slicer.vtkMRMLLayoutNode.SlicerLayoutOneUp3DView
-        )
-
-    # -----------------------------
-    # Visual 3D
-    # -----------------------------
-    def buildVisual3D(self):
-        vol, arr = self._getCT()
-        body = self._buildBodyMask(arr)
-
-        skin = (arr > -300) & (arr < 300) & body
-        bone = (arr > 300) & body
-        air  = (arr < -300) & body
-
-        self._buildSegmentation(vol, skin, bone, air)
-
-    # -----------------------------
-    # Surgical 3D
-    # -----------------------------
-    def buildSurgical3D(self):
-        vol, arr = self._getCT()
-        body = self._buildBodyMask(arr)
-
-        skin = (arr > -300) & (arr < 300) & body
-        bone = (arr > 300) & body
-        air  = (arr < -300) & body
-
-        self._buildSegmentation(vol, skin, bone, air)
-
-    # -----------------------------
-    # Toggle visibility
-    # -----------------------------
-    def toggle(self, name):
-        if not hasattr(self, "segNode"):
-            return
-        disp = self.segNode.GetDisplayNode()
-        disp.SetSegmentVisibility(name, not disp.GetSegmentVisibility(name))
+    # ===============================
+    # RELOAD MODULE
+    # ===============================
+    def reloadModule(self):
+        slicer.util.reloadScriptedModule("ENT_Assistant_v3")
