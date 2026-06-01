@@ -28,6 +28,7 @@ The newest workflow also targets `AI-assisted CT sinus reporting` for paranasal 
 - Sinus CT rule engine for opacification pattern, possible fluid level, likely OMC obstruction, probable septal deviation, possible hypoplasia, and FESS-relevant anatomy flags.
 - Draft radiology report sections: `Description`, `Impression`, and `Recommendations for ENT`.
 - Findings table in the Slicer UI for sinus findings, OMC status, and anatomic variants.
+- 3D visualization helpers for sinus-focused, internal-head, and FESS-planning views.
 - Shared core helpers for presets and report naming.
 
 ## Open-source references used
@@ -58,10 +59,20 @@ The `CT PNS: AI-assisted sinus report` preset is designed as a clinician-support
 - splits combined sinus masks into left/right measurement rows when needed
 - estimates sinus aeration and soft-tissue occupancy from CT intensities inside the segmented cavities
 - flags likely total opacification, partial opacification, probable fluid level, likely OMC obstruction, probable septal deviation, possible sinus hypoplasia, and FESS-relevant variants when enough evidence is present
+- estimates an approximate Lund-Mackay-style burden score from opacification and OMC status
+- generates a short surgical-planning summary for FESS-oriented review
 - writes structured draft sections:
   - `Description`
   - `Impression`
   - `Recommendations for ENT`
+
+After analysis, the module can also prepare three built-in 3D visualization modes in Slicer:
+
+- `Prepare 3D sinus view`
+- `Internal head view`
+- `FESS planning view`
+
+These views use volume rendering plus styled segment colors/opacities to better expose bone, internal sinus cavities, nasal cavity, septum, and OMC-related structures in the 3D window.
 
 This is intentionally template-driven and conservative. The current implementation favors reproducible wording over free-form generative text.
 

@@ -31,6 +31,8 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         super().setup()
         layout = self.layout
         self.presets = get_presets()
+        self.lastVolumeNodeId = None
+        self.lastSegmentationNodeId = None
 
         title = qt.QLabel(
             "<h2>ENT Assistant v3</h2>"
@@ -124,6 +126,18 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.stackBtn.clicked.connect(self.checkOpenSourceStack)
         layout.addWidget(self.stackBtn)
 
+        viewButtons = qt.QHBoxLayout()
+        self.sinus3dBtn = qt.QPushButton("Prepare 3D sinus view")
+        self.sinus3dBtn.clicked.connect(self.prepareSinus3DView)
+        viewButtons.addWidget(self.sinus3dBtn)
+        self.internal3dBtn = qt.QPushButton("Internal head view")
+        self.internal3dBtn.clicked.connect(self.prepareInternalHeadView)
+        viewButtons.addWidget(self.internal3dBtn)
+        self.surgical3dBtn = qt.QPushButton("FESS planning view")
+        self.surgical3dBtn.clicked.connect(self.prepareSurgicalView)
+        viewButtons.addWidget(self.surgical3dBtn)
+        layout.addLayout(viewButtons)
+
         self.devBtn = qt.QPushButton("Run DEV helper")
         self.devBtn.clicked.connect(self.runDevScript)
         layout.addWidget(self.devBtn)
@@ -193,10 +207,14 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                 for comparison in result.get("comparisons", [])[:2]:
                     self.appendOutput(comparison.get("summaryText", ""))
                 first_case = (result.get("cases") or [{}])[0]
+                self.lastVolumeNodeId = first_case.get("volumeNodeId")
+                self.lastSegmentationNodeId = first_case.get("segmentationNodeId")
                 self.populateFindingsTable(((first_case.get("sinusReport") or {}).get("findingRows")) or [])
                 return
             self.appendOutput("")
             self.appendOutput(f"Completed preset: {result['preset']}")
+            self.lastVolumeNodeId = result.get("volumeNodeId")
+            self.lastSegmentationNodeId = result.get("segmentationNodeId")
             if result.get("reportPath"):
                 self.appendOutput(f"Report: {result['reportPath']}")
             export_info = result.get("exportInfo")
@@ -293,6 +311,31 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             self.findingsTable.setItem(row_index, 3, qt.QTableWidgetItem(str(row.get("details", ""))))
         if not rows:
             self.findingsTable.setRowCount(0)
+
+    def prepareSinus3DView(self):
+        self._runVisualization("prepare_sinus_3d_scene")
+
+    def prepareInternalHeadView(self):
+        self._runVisualization("prepare_internal_head_view")
+
+    def prepareSurgicalView(self):
+        self._runVisualization("prepare_surgical_focus_view")
+
+    def _runVisualization(self, function_name):
+        try:
+            if not self.lastVolumeNodeId:
+                self.output.setText("Run analysis first, or load a CT and analyze it to prepare 3D visualization.")
+                return
+            volume_node = slicer.mrmlScene.GetNodeByID(self.lastVolumeNodeId)
+            segmentation_node = slicer.mrmlScene.GetNodeByID(self.lastSegmentationNodeId) if self.lastSegmentationNodeId else None
+            visualization_path = os.path.abspath(os.path.join(MODULE_DIR, "sinus_visualization.py"))
+            module = self._load_python_module("ent_sinus_visualization_runtime", visualization_path)
+            result = getattr(module, function_name)(volume_node, segmentation_node)
+            self.appendOutput(f"Visualization prepared: {function_name}")
+            if result:
+                self.appendOutput(str(result))
+        except Exception as error:
+            self.output.setText(f"Visualization error:\n{error}")
 
     def _load_python_module(self, module_name, path):
         spec = importlib.util.spec_from_file_location(module_name, path)

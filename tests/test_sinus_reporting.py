@@ -51,6 +51,8 @@ class SinusReportingTests(unittest.TestCase):
         self.assertIn("риносинусита", report["impression"])
         self.assertTrue(any("ОМК справа" in row["details"] or "справа" in row["details"] for row in report["findingRows"]))
         self.assertTrue(any("перегородки носа" in row["details"] for row in report["findingRows"]))
+        self.assertGreater(report["lundMackay"]["totalScore"], 0)
+        self.assertTrue(report["surgicalPlanning"]["summaryLines"])
 
     def test_build_ct_sinus_report_handles_near_normal_case(self):
         report = build_ct_sinus_report(
@@ -78,6 +80,7 @@ class SinusReportingTests(unittest.TestCase):
         )
         self.assertIn("не выявлено", report["impression"])
         self.assertIn("Пневматизация", report["description"])
+        self.assertEqual(report["lundMackay"]["totalScore"], 0)
 
 
 if __name__ == "__main__":

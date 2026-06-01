@@ -36,6 +36,8 @@ def build_ct_sinus_report(measurements: Iterable[Dict[str, object]], study_info:
     anatomic_variants = _build_anatomic_variants(by_name, sinus_findings)
     omc_status = _build_omc_status(by_name, sinus_findings)
     diagnosis_hints = _build_diagnosis_hints(sinus_findings, omc_status)
+    lund_mackay = _build_lund_mackay_score(sinus_findings, omc_status)
+    surgical_summary = _build_surgical_summary(sinus_findings, omc_status, anatomic_variants)
     description = _build_description(sinus_findings, anatomic_variants, omc_status)
     impression_lines = _build_impression_lines(diagnosis_hints, omc_status, anatomic_variants)
     recommendations = _build_recommendations(diagnosis_hints, omc_status, anatomic_variants, study_info or {})
@@ -45,12 +47,14 @@ def build_ct_sinus_report(measurements: Iterable[Dict[str, object]], study_info:
         "anatomicVariants": anatomic_variants,
         "omcStatus": omc_status,
         "diagnosisHints": diagnosis_hints,
+        "lundMackay": lund_mackay,
+        "surgicalPlanning": surgical_summary,
         "description": description,
         "impression": "\n".join(impression_lines),
         "impressionLines": impression_lines,
         "recommendations": recommendations,
-        "reportText": _build_report_text(description, impression_lines, recommendations),
-        "findingRows": _build_finding_rows(sinus_findings, anatomic_variants, omc_status),
+        "reportText": _build_report_text(description, impression_lines, recommendations, lund_mackay, surgical_summary),
+        "findingRows": _build_finding_rows(sinus_findings, anatomic_variants, omc_status, lund_mackay, surgical_summary),
         "disclaimer": "AI-assisted sinus CT reporting support. Final interpretation remains with the physician.",
     }
 
@@ -342,16 +346,29 @@ def _build_recommendations(
     return recommendations
 
 
-def _build_report_text(description: str, impression_lines: Iterable[str], recommendations: Iterable[str]) -> str:
+def _build_report_text(
+    description: str,
+    impression_lines: Iterable[str],
+    recommendations: Iterable[str],
+    lund_mackay: Dict[str, object],
+    surgical_summary: Dict[str, object],
+) -> str:
     impression = "\n".join(f"- {line}" for line in impression_lines)
     recommendation_lines = "\n".join(f"- {line}" for line in recommendations)
+    surgical_lines = "\n".join(f"- {line}" for line in surgical_summary.get("summaryLines", []))
     return "\n".join(
         [
             "Описание:",
             description or "Нет данных.",
             "",
+            "Оценка распространенности:",
+            f"Lund-Mackay (approx.): {lund_mackay.get('totalScore', 0)} / 24",
+            "",
             "Заключение:",
             impression,
+            "",
+            "Хирургически значимые особенности:",
+            surgical_lines or "- Не выделены.",
             "",
             "Рекомендации для ЛОР-врача:",
             recommendation_lines,
@@ -363,6 +380,8 @@ def _build_finding_rows(
     sinus_findings: Iterable[Dict[str, object]],
     anatomic_variants: Iterable[Dict[str, object]],
     omc_status: Dict[str, Dict[str, str]],
+    lund_mackay: Dict[str, object],
+    surgical_summary: Dict[str, object],
 ) -> List[Dict[str, str]]:
     rows: List[Dict[str, str]] = []
     for finding in sinus_findings:
@@ -392,6 +411,25 @@ def _build_finding_rows(
                 "structure": variant["code"],
                 "status": variant["importance"],
                 "details": variant["message"],
+            }
+        )
+    rows.append(
+        {
+            "category": "Score",
+            "structure": "Lund-Mackay",
+            "status": str(lund_mackay.get("totalScore", 0)),
+            "details": " | ".join(
+                f"{item['region']}={item['score']}" for item in lund_mackay.get("regionScores", [])[:8]
+            ),
+        }
+    )
+    for line in surgical_summary.get("summaryLines", []):
+        rows.append(
+            {
+                "category": "Surgery",
+                "structure": "FESS planning",
+                "status": "note",
+                "details": line,
             }
         )
     return rows
@@ -448,3 +486,65 @@ def _split_root_and_side(segment_name: str) -> Tuple[str, str]:
     if segment_name.endswith("_right"):
         return segment_name[: -len("_right")], "right"
     return segment_name, "unknown"
+
+
+def _build_lund_mackay_score(sinus_findings: Iterable[Dict[str, object]], omc_status: Dict[str, Dict[str, str]]) -> Dict[str, object]:
+    region_scores: List[Dict[str, object]] = []
+    total = 0
+    for finding in sinus_findings:
+        opacified_fraction = float(finding.get("opacifiedFraction", 0.0))
+        if opacified_fraction < 0.1:
+            score = 0
+        elif opacified_fraction < 0.9:
+            score = 1
+        else:
+            score = 2
+        region_name = f"{finding['label']}"
+        region_scores.append({"region": region_name, "score": score})
+        total += score
+    for side in ("right", "left"):
+        state = omc_status.get(side, {}).get("state")
+        score = 2 if state in {"blocked", "possibly_blocked"} else 1 if state == "partially_blocked" else 0
+        region_scores.append(
+            {
+                "region": f"ОМК {'справа' if side == 'right' else 'слева'}",
+                "score": score,
+            }
+        )
+        total += score
+    return {"totalScore": total, "regionScores": region_scores}
+
+
+def _build_surgical_summary(
+    sinus_findings: Iterable[Dict[str, object]],
+    omc_status: Dict[str, Dict[str, str]],
+    anatomic_variants: Iterable[Dict[str, object]],
+) -> Dict[str, object]:
+    summary_lines: List[str] = []
+    risk_factors: List[str] = []
+
+    blocked_sides = [side for side in ("right", "left") if omc_status.get(side, {}).get("state") in {"blocked", "partially_blocked", "possibly_blocked"}]
+    if blocked_sides:
+        readable = ", ".join("справа" if side == "right" else "слева" for side in blocked_sides)
+        summary_lines.append(f"Есть признаки нарушения дренажа через ОМК: {readable}.")
+        risk_factors.append("omc_drainage_risk")
+
+    severe_sinuses = [finding["label"] for finding in sinus_findings if finding.get("severity") in {"severe", "moderate_to_severe"}]
+    if severe_sinuses:
+        summary_lines.append("Наиболее выраженные изменения: " + "; ".join(severe_sinuses[:4]) + ".")
+        risk_factors.append("high_opacification_burden")
+
+    relevant_variants = [variant["message"] for variant in anatomic_variants if variant.get("importance") == "fess_relevant"]
+    if relevant_variants:
+        summary_lines.append("Анатомические особенности для учета перед FESS: " + "; ".join(relevant_variants[:4]))
+        risk_factors.append("fess_anatomic_variants")
+
+    hypoplasia = [variant["message"] for variant in anatomic_variants if variant.get("code") == "sinus_hypoplasia_candidate"]
+    if hypoplasia:
+        summary_lines.append("Возможные гипоплазированные пазухи: " + "; ".join(hypoplasia[:2]))
+        risk_factors.append("sinus_hypoplasia")
+
+    if not summary_lines:
+        summary_lines.append("Грубых анатомических факторов риска для FESS по текущим автоматическим правилам не выделено.")
+
+    return {"summaryLines": summary_lines, "riskFactors": risk_factors}

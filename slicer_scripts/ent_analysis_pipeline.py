@@ -168,9 +168,11 @@ class ENTAnalysisPipeline:
             self.log(sinus_report["reportText"])
         return {
             "volumeName": volume_node.GetName(),
+            "volumeNodeId": volume_node.GetID(),
             "studyInfo": study_info,
             "preset": preset.title,
             "segmentationNodeName": segmentation_node.GetName(),
+            "segmentationNodeId": segmentation_node.GetID(),
             "measurements": measurements,
             "qualityChecks": quality_checks,
             "entSummary": ent_summary,
@@ -607,6 +609,8 @@ class ENTAnalysisPipeline:
                     "pathologyFlags",
                     "rtstructReady",
                     "sinusImpression",
+                    "lundMackayScore",
+                    "surgicalSummary",
                 ],
             )
             writer.writeheader()
@@ -617,6 +621,7 @@ class ENTAnalysisPipeline:
                 flags = ent_summary.get("heuristicFlags") or []
                 top_airway = airway_rows[0] if airway_rows else {}
                 top_asymmetry = asymmetry_rows[0] if asymmetry_rows else {}
+                sinus_report = result.get("sinusReport") or {}
                 writer.writerow(
                     {
                         "volumeName": result.get("volumeName"),
@@ -633,7 +638,9 @@ class ENTAnalysisPipeline:
                         "dicomSeriesDescription": (result.get("studyInfo") or {}).get("dicomSeriesDescription"),
                         "pathologyFlags": " | ".join(flag.get("code", "") for flag in result.get("pathologyFlags", [])),
                         "rtstructReady": (result.get("rtstructReadiness") or {}).get("ready"),
-                        "sinusImpression": ((result.get("sinusReport") or {}).get("impression") or "").replace("\n", " | "),
+                        "sinusImpression": (sinus_report.get("impression") or "").replace("\n", " | "),
+                        "lundMackayScore": ((sinus_report.get("lundMackay") or {}).get("totalScore")),
+                        "surgicalSummary": " | ".join((sinus_report.get("surgicalPlanning") or {}).get("summaryLines", [])),
                     }
                 )
         return str(csv_path)

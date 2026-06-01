@@ -21,6 +21,8 @@ This repository now includes a dedicated `CT PNS: AI-assisted sinus report` work
    - probable fluid-level heuristics
    - probable OMC obstruction logic
    - anatomic-variant flags relevant to FESS
+   - approximate Lund-Mackay burden scoring
+   - FESS-oriented planning notes
    - deterministic text generation
 
 4. `Report generator`
@@ -39,6 +41,21 @@ The present implementation can already draft findings for:
 - possible sinus hypoplasia
 - possible OMC obstruction
 - FESS-relevant anatomic variants when represented in the segmentation
+- approximate Lund-Mackay scoring
+- structured surgical planning notes for endoscopic sinus surgery review
+
+## 3D visualization layer
+
+The Slicer module now exposes three immediate visualization helpers:
+
+- `Prepare 3D sinus view`
+  - emphasizes sinus cavities against semitransparent bone rendering
+- `Internal head view`
+  - increases visibility of internal cavities and reduces bone dominance
+- `FESS planning view`
+  - highlights OMC, nasal septum, and related structures when available
+
+These are not just cosmetic views. They are intended to make preoperative review faster inside the same Slicer workflow.
 
 ## What still needs a trained model
 

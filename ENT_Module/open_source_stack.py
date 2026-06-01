@@ -64,6 +64,20 @@ OPEN_SOURCE_COMPONENTS = [
         "source": "https://github.com/SlicerRt/SlicerRT",
     },
     {
+        "name": "SlicerVMTK",
+        "type": "module",
+        "check": lambda: hasattr(slicer.modules, "crosssectionanalysis") or hasattr(slicer.modules, "extractcenterline"),
+        "purpose": "Open-source vascular/tubular analysis toolkit useful for advanced centerline-style workflows.",
+        "source": "https://github.com/vmtk/SlicerExtension-VMTK",
+    },
+    {
+        "name": "Endoscopy",
+        "type": "module",
+        "check": lambda: hasattr(slicer.modules, "endoscopy"),
+        "purpose": "3D Slicer module for virtual endoscopy-style camera navigation along paths.",
+        "source": "https://www.slicer.org/",
+    },
+    {
         "name": "CloudSegmentatorResults reference",
         "type": "reference",
         "check": lambda: True,
@@ -102,6 +116,7 @@ def inspect_open_source_stack() -> Dict[str, object]:
     lines.append("- SegmentEditorExtraEffects for local refinement in Slicer")
     lines.append("- MONAI Label and/or nnU-Net v2 for custom sinus CT segmentation workflows")
     lines.append("- SlicerNNInteractive for rapid correction of anatomy/pathology masks")
+    lines.append("- Endoscopy and/or SlicerVMTK for advanced navigation or tubular-analysis workflows when needed")
     lines.append("- Slicer export workflow for .seg.nrrd, labelmaps and surface models")
     lines.append("- SlicerRT for DICOM RT readiness and contour comparison/export workflows")
 
