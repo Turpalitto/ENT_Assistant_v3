@@ -10,6 +10,7 @@ import sys
 import tempfile
 from typing import Dict, List, Optional
 
+import numpy as np
 import slicer
 import vtk
 
@@ -17,6 +18,24 @@ import vtk
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
+
+DEFAULT_SINUS_NNUNET_LABEL_MAP = {
+    1: "sinus_maxillary_right",
+    2: "sinus_maxillary_left",
+    3: "sinus_frontal_right",
+    4: "sinus_frontal_left",
+    5: "sinus_ethmoid_right",
+    6: "sinus_ethmoid_left",
+    7: "sinus_sphenoid_right",
+    8: "sinus_sphenoid_left",
+    9: "nasal_cavity_right",
+    10: "nasal_cavity_left",
+    11: "ostiomeatal_complex_right",
+    12: "ostiomeatal_complex_left",
+    13: "nasal_septum",
+    14: "concha_bullosa_right",
+    15: "concha_bullosa_left",
+}
 
 from ENT_Module.ent_assistant_core import (
     AnalysisConfig,
@@ -33,6 +52,7 @@ from ENT_Module.ent_assistant_core import (
     sanitize_filename,
     summarize_measurements,
 )
+from ENT_Module.sinus_reporting import build_ct_sinus_report
 
 
 class ENTAnalysisPipeline:
@@ -81,8 +101,27 @@ class ENTAnalysisPipeline:
     def _run_for_volume(self, volume_node, config: AnalysisConfig) -> Dict[str, object]:
         preset = get_preset(config.preset_key)
         self.log(f"Starting preset: {preset.title}")
+        study_info = self._extract_study_info(volume_node)
+        modality = str(study_info.get("dicomModality") or "")
+        if modality and modality.upper() != "CT" and config.preset_key == "sinus_ct_ai":
+            self.log(f"Warning: sinus radiology mode is optimized for CT, but the loaded modality is {modality}.")
 
-        if preset.mode == "totalsegmentator" and config.use_totalsegmentator:
+        if config.preset_key == "sinus_ct_ai":
+            sinus_predictor = self._find_nnunet_predictor()
+            if sinus_predictor and self._is_nnunet_sinus_configured():
+                self.log(f"Using nnU-Net sinus backend: {sinus_predictor}")
+                segmentation_node = self._run_nnunet_sinus_model(volume_node, sinus_predictor)
+            elif preset.mode == "totalsegmentator" and config.use_totalsegmentator:
+                executable = self._find_totalsegmentator()
+                if executable:
+                    self.log(f"Using TotalSegmentator: {executable}")
+                    segmentation_node = self._run_totalsegmentator(volume_node, preset, executable, config)
+                else:
+                    self.log("TotalSegmentator not found. Falling back to threshold segmentation.")
+                    segmentation_node = self._run_threshold_segmentation(volume_node, config)
+            else:
+                segmentation_node = self._run_threshold_segmentation(volume_node, config)
+        elif preset.mode == "totalsegmentator" and config.use_totalsegmentator:
             executable = self._find_totalsegmentator()
             if executable:
                 self.log(f"Using TotalSegmentator: {executable}")
@@ -97,6 +136,7 @@ class ENTAnalysisPipeline:
         quality_checks = build_quality_checks(preset, measurements)
         ent_summary = build_ent_summary(preset, measurements)
         pathology_flags = build_ent_pathology_flags(measurements)
+        sinus_report = build_ct_sinus_report(measurements, study_info) if config.preset_key == "sinus_ct_ai" else None
         rtstruct_readiness = self._check_rtstruct_readiness(volume_node)
         export_info = None
         if config.export_results:
@@ -104,7 +144,17 @@ class ENTAnalysisPipeline:
             self.log(self._format_export_summary(export_info))
         report_path = None
         if config.save_report:
-            report_path = self._save_report(volume_node, preset.title, measurements, quality_checks, ent_summary, export_info, config)
+            report_path = self._save_report(
+                volume_node,
+                preset.title,
+                measurements,
+                quality_checks,
+                ent_summary,
+                export_info,
+                config,
+                study_info=study_info,
+                sinus_report=sinus_report,
+            )
             self.log(f"Report saved: {report_path}")
 
         summary = summarize_measurements(measurements)
@@ -113,15 +163,19 @@ class ENTAnalysisPipeline:
         self.log(ent_summary["summaryText"])
         if pathology_flags:
             self.log(self._format_pathology_flags(pathology_flags))
+        if sinus_report:
+            self.log("Sinus report:")
+            self.log(sinus_report["reportText"])
         return {
             "volumeName": volume_node.GetName(),
-            "studyInfo": self._extract_study_info(volume_node),
+            "studyInfo": study_info,
             "preset": preset.title,
             "segmentationNodeName": segmentation_node.GetName(),
             "measurements": measurements,
             "qualityChecks": quality_checks,
             "entSummary": ent_summary,
             "pathologyFlags": pathology_flags,
+            "sinusReport": sinus_report,
             "rtstructReadiness": rtstruct_readiness,
             "exportInfo": export_info,
             "reportPath": report_path,
@@ -160,6 +214,112 @@ class ENTAnalysisPipeline:
             ),
             None,
         )
+
+    def _find_nnunet_predictor(self) -> Optional[str]:
+        return next(
+            (
+                candidate
+                for candidate in [
+                    shutil.which("nnUNetv2_predict"),
+                    shutil.which("nnUNet_predict"),
+                ]
+                if candidate
+            ),
+            None,
+        )
+
+    def _is_nnunet_sinus_configured(self) -> bool:
+        return bool(os.environ.get("ENT_SINUS_NNUNET_DATASET"))
+
+    def _run_nnunet_sinus_model(self, volume_node, executable: str):
+        dataset_id = os.environ.get("ENT_SINUS_NNUNET_DATASET")
+        configuration = os.environ.get("ENT_SINUS_NNUNET_CONFIGURATION", "3d_fullres")
+        folds = os.environ.get("ENT_SINUS_NNUNET_FOLDS", "all")
+        trainer = os.environ.get("ENT_SINUS_NNUNET_TRAINER")
+        plans = os.environ.get("ENT_SINUS_NNUNET_PLANS")
+        if not dataset_id:
+            raise RuntimeError("ENT_SINUS_NNUNET_DATASET is not configured.")
+
+        workspace = Path(tempfile.mkdtemp(prefix="ent_sinus_nnunet_"))
+        input_dir = workspace / "input"
+        output_dir = workspace / "output"
+        input_dir.mkdir(parents=True, exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        input_path = input_dir / "case_0000.nii.gz"
+        if not slicer.util.saveNode(volume_node, str(input_path)):
+            raise RuntimeError("Failed to export active volume to NIfTI for nnU-Net inference.")
+
+        command = [executable, "-i", str(input_dir), "-o", str(output_dir), "-d", str(dataset_id), "-c", configuration, "-f", folds]
+        if trainer:
+            command.extend(["-tr", trainer])
+        if plans:
+            command.extend(["-p", plans])
+
+        result = subprocess.run(command, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or "nnU-Net sinus inference failed without stderr output.")
+
+        prediction_path = output_dir / "case.nii.gz"
+        if not prediction_path.exists():
+            prediction_path = output_dir / "case_0000.nii.gz"
+        if not prediction_path.exists():
+            candidates = sorted(output_dir.glob("*.nii.gz"))
+            if not candidates:
+                raise RuntimeError("nnU-Net finished, but no prediction file was found.")
+            prediction_path = candidates[0]
+
+        success, label_node = slicer.util.loadLabelVolume(str(prediction_path), returnNode=True)
+        if not success:
+            raise RuntimeError("Failed to load nnU-Net prediction labelmap.")
+        try:
+            segmentation_node = self._import_multilabel_prediction_to_segmentation(label_node, volume_node, "ENT_Sinus_nnUNet")
+        finally:
+            slicer.mrmlScene.RemoveNode(label_node)
+        return segmentation_node
+
+    def _import_multilabel_prediction_to_segmentation(self, label_node, volume_node, segmentation_name: str):
+        label_map = self._get_nnunet_label_map()
+        label_array = slicer.util.arrayFromVolume(label_node)
+        segmentation_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
+        segmentation_node.SetName(segmentation_name)
+        segmentation_node.CreateDefaultDisplayNodes()
+        segmentation_node.SetReferenceImageGeometryParameterFromVolumeNode(volume_node)
+
+        imported_any = False
+        for label_value, segment_name in label_map.items():
+            binary_mask = label_array == int(label_value)
+            if int(binary_mask.sum()) <= 0:
+                continue
+            tmp_label = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode", f"tmp_{segment_name}")
+            tmp_label.CopyOrientation(label_node)
+            tmp_label.SetOrigin(label_node.GetOrigin())
+            tmp_label.SetSpacing(label_node.GetSpacing())
+            slicer.util.updateVolumeFromArray(tmp_label, binary_mask.astype(np.uint8))
+            tmp_label.CreateDefaultDisplayNodes()
+            before = segmentation_node.GetSegmentation().GetNumberOfSegments()
+            slicer.modules.segmentations.logic().ImportLabelmapToSegmentationNode(tmp_label, segmentation_node)
+            after = segmentation_node.GetSegmentation().GetNumberOfSegments()
+            if after > before:
+                imported_segment_id = segmentation_node.GetSegmentation().GetNthSegmentID(after - 1)
+                segmentation_node.GetSegmentation().GetSegment(imported_segment_id).SetName(segment_name)
+            slicer.mrmlScene.RemoveNode(tmp_label)
+            imported_any = True
+
+        if not imported_any:
+            raise RuntimeError("nnU-Net prediction did not contain any labels mapped to known sinus structures.")
+        segmentation_node.CreateClosedSurfaceRepresentation()
+        segmentation_node.GetDisplayNode().SetVisibility3D(True)
+        return segmentation_node
+
+    def _get_nnunet_label_map(self) -> Dict[int, str]:
+        path = os.environ.get("ENT_SINUS_LABEL_MAP_JSON")
+        if not path:
+            return DEFAULT_SINUS_NNUNET_LABEL_MAP.copy()
+        try:
+            payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        except Exception as error:
+            raise RuntimeError(f"Failed to load ENT_SINUS_LABEL_MAP_JSON: {error}")
+        return {int(key): str(value) for key, value in payload.items()}
 
     def _run_totalsegmentator(self, volume_node, preset, executable: str, config: AnalysisConfig):
         if not preset.totalsegmentator_task or not preset.expected_masks:
@@ -280,6 +440,7 @@ class ENTAnalysisPipeline:
     def _compute_measurements(self, segmentation_node, volume_node) -> List[Dict[str, object]]:
         segmentation = segmentation_node.GetSegmentation()
         voxel_volume_mm3 = volume_node.GetSpacing()[0] * volume_node.GetSpacing()[1] * volume_node.GetSpacing()[2]
+        source_array = slicer.util.arrayFromVolume(volume_node)
         results: List[Dict[str, object]] = []
 
         for index in range(segmentation.GetNumberOfSegments()):
@@ -294,35 +455,112 @@ class ENTAnalysisPipeline:
                 volume_node,
             )
             array = slicer.util.arrayFromVolume(labelmap_node)
-            voxel_count = int((array > 0).sum())
             slicer.mrmlScene.RemoveNode(labelmap_node)
-            results.append(
-                {
-                    "segment": segmentation.GetSegment(segment_id).GetName(),
-                    "voxel_count": voxel_count,
-                    "volume_mm3": round(voxel_count * voxel_volume_mm3, 2),
-                    "volume_ml": round((voxel_count * voxel_volume_mm3) / 1000.0, 2),
-                }
-            )
+            segment_name = segmentation.GetSegment(segment_id).GetName()
+            mask = array > 0
+            if self._should_split_segment_by_side(segment_name, mask):
+                midline_index = mask.shape[2] // 2
+                left_mask = mask.copy()
+                left_mask[:, :, :midline_index] = False
+                right_mask = mask.copy()
+                right_mask[:, :, midline_index:] = False
+                if int(left_mask.sum()) > 0:
+                    results.append(
+                        self._build_measurement_record(f"{segment_name}_left", left_mask, source_array, voxel_volume_mm3, segment_name)
+                    )
+                if int(right_mask.sum()) > 0:
+                    results.append(
+                        self._build_measurement_record(
+                            f"{segment_name}_right", right_mask, source_array, voxel_volume_mm3, segment_name
+                        )
+                    )
+                continue
+            results.append(self._build_measurement_record(segment_name, mask, source_array, voxel_volume_mm3, segment_name))
         return results
 
-    def _save_report(self, volume_node, preset_title: str, measurements, quality_checks, ent_summary, export_info, config: AnalysisConfig) -> str:
+    def _should_split_segment_by_side(self, segment_name: str, mask) -> bool:
+        if segment_name.endswith("_left") or segment_name.endswith("_right"):
+            return False
+        if segment_name not in {"sinus_maxillary", "sinus_frontal", "sinus_sphenoid", "sinus_ethmoid"}:
+            return False
+        if mask.shape[2] < 4:
+            return False
+        midline_index = mask.shape[2] // 2
+        left_voxels = int(mask[:, :, midline_index:].sum())
+        right_voxels = int(mask[:, :, :midline_index].sum())
+        return left_voxels > 0 and right_voxels > 0
+
+    def _build_measurement_record(self, segment_name: str, mask, source_array, voxel_volume_mm3: float, source_segment: str) -> Dict[str, object]:
+        voxel_count = int(mask.sum())
+        if voxel_count <= 0:
+            return {
+                "segment": segment_name,
+                "sourceSegment": source_segment,
+                "voxel_count": 0,
+                "volume_mm3": 0.0,
+                "volume_ml": 0.0,
+            }
+
+        intensities = source_array[mask]
+        air_mask = intensities < -300
+        soft_mask = (intensities >= -300) & (intensities <= 150)
+        fluid_mask = (intensities >= -20) & (intensities <= 80)
+        z_indices = np.where(mask)[0]
+        lower_half_mask = z_indices >= (int((z_indices.min() + z_indices.max()) / 2))
+        upper_half_mask = ~lower_half_mask
+        inferior_soft_fraction = float(soft_mask[lower_half_mask].mean()) if lower_half_mask.any() else 0.0
+        superior_soft_fraction = float(soft_mask[upper_half_mask].mean()) if upper_half_mask.any() else 0.0
+        centroid_ijk = np.argwhere(mask).mean(axis=0)
+
+        return {
+            "segment": segment_name,
+            "sourceSegment": source_segment,
+            "voxel_count": voxel_count,
+            "volume_mm3": round(voxel_count * voxel_volume_mm3, 2),
+            "volume_ml": round((voxel_count * voxel_volume_mm3) / 1000.0, 2),
+            "mean_hu": round(float(np.mean(intensities)), 2),
+            "min_hu": round(float(np.min(intensities)), 2),
+            "max_hu": round(float(np.max(intensities)), 2),
+            "p10_hu": round(float(np.percentile(intensities, 10)), 2),
+            "p90_hu": round(float(np.percentile(intensities, 90)), 2),
+            "air_fraction": round(float(air_mask.mean()), 4),
+            "soft_fraction": round(float(soft_mask.mean()), 4),
+            "fluid_fraction": round(float(fluid_mask.mean()), 4),
+            "inferior_soft_fraction": round(inferior_soft_fraction, 4),
+            "superior_soft_fraction": round(superior_soft_fraction, 4),
+            "centroid_ijk": [round(float(value), 2) for value in centroid_ijk.tolist()],
+        }
+
+    def _save_report(
+        self,
+        volume_node,
+        preset_title: str,
+        measurements,
+        quality_checks,
+        ent_summary,
+        export_info,
+        config: AnalysisConfig,
+        study_info=None,
+        sinus_report=None,
+    ) -> str:
         report_dir = ensure_report_dir(config.report_dir, REPO_ROOT)
         report_path = build_report_path(report_dir, volume_node.GetName(), preset_title)
         pathology_flags = build_ent_pathology_flags(measurements)
         rtstruct_readiness = self._check_rtstruct_readiness(volume_node)
+        impression_text = sinus_report["impression"] if sinus_report else build_impression(preset_title, measurements)
         payload = {
             "volumeName": volume_node.GetName(),
             "preset": preset_title,
             "generatedAt": __import__("datetime").datetime.now().isoformat(),
-            "studyInfo": self._extract_study_info(volume_node),
+            "studyInfo": study_info or self._extract_study_info(volume_node),
             "measurements": measurements,
             "qualityChecks": quality_checks,
             "entSummary": ent_summary,
             "pathologyFlags": pathology_flags,
+            "sinusReport": sinus_report,
             "rtstructReadiness": rtstruct_readiness,
             "exports": export_info,
-            "impressionDraft": build_impression(preset_title, measurements),
+            "impressionDraft": impression_text,
         }
         report_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         return str(report_path)
@@ -368,6 +606,7 @@ class ENTAnalysisPipeline:
                     "dicomSeriesDescription",
                     "pathologyFlags",
                     "rtstructReady",
+                    "sinusImpression",
                 ],
             )
             writer.writeheader()
@@ -394,6 +633,7 @@ class ENTAnalysisPipeline:
                         "dicomSeriesDescription": (result.get("studyInfo") or {}).get("dicomSeriesDescription"),
                         "pathologyFlags": " | ".join(flag.get("code", "") for flag in result.get("pathologyFlags", [])),
                         "rtstructReady": (result.get("rtstructReadiness") or {}).get("ready"),
+                        "sinusImpression": ((result.get("sinusReport") or {}).get("impression") or "").replace("\n", " | "),
                     }
                 )
         return str(csv_path)

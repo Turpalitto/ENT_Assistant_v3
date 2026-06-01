@@ -36,6 +36,20 @@ OPEN_SOURCE_COMPONENTS = [
         "source": "https://github.com/Project-MONAI/MONAILabel",
     },
     {
+        "name": "MONAI Label CLI",
+        "type": "cli",
+        "check": lambda: shutil.which("monailabel"),
+        "purpose": "Local MONAI Label server/runtime for custom sinus segmentation apps and iterative annotation.",
+        "source": "https://github.com/Project-MONAI/MONAILabel",
+    },
+    {
+        "name": "nnU-Net v2",
+        "type": "cli",
+        "check": lambda: shutil.which("nnUNetv2_predict"),
+        "purpose": "Open-source training and inference backbone for custom sinus CT segmentation models.",
+        "source": "https://github.com/MIC-DKFZ/nnUNet",
+    },
+    {
         "name": "SlicerNNInteractive",
         "type": "module",
         "check": lambda: hasattr(slicer.modules, "nninteractive"),
@@ -84,9 +98,10 @@ def inspect_open_source_stack() -> Dict[str, object]:
 
     lines.append("")
     lines.append("Recommended minimum stack for this project:")
-    lines.append("- TotalSegmentator for automatic ENT/head segmentation")
+    lines.append("- TotalSegmentator for baseline ENT/head segmentation and sinus cavity bootstrapping")
     lines.append("- SegmentEditorExtraEffects for local refinement in Slicer")
-    lines.append("- MONAI Label or SlicerNNInteractive for interactive annotation workflows")
+    lines.append("- MONAI Label and/or nnU-Net v2 for custom sinus CT segmentation workflows")
+    lines.append("- SlicerNNInteractive for rapid correction of anatomy/pathology masks")
     lines.append("- Slicer export workflow for .seg.nrrd, labelmaps and surface models")
     lines.append("- SlicerRT for DICOM RT readiness and contour comparison/export workflows")
 

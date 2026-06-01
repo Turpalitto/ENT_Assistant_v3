@@ -51,6 +51,24 @@ class AnalysisConfig:
 
 
 DEFAULT_PRESETS: Dict[str, AnalysisPreset] = {
+    "sinus_ct_ai": AnalysisPreset(
+        key="sinus_ct_ai",
+        title="CT PNS: AI-assisted sinus report",
+        description="Paranasal sinus CT workflow with sinus-focused anatomy, pathology heuristics, OMC assessment and radiology-style report drafting.",
+        mode="totalsegmentator",
+        totalsegmentator_task="craniofacial_structures",
+        expected_masks=[
+            "sinus_maxillary",
+            "sinus_frontal",
+            "sinus_sphenoid",
+            "sinus_ethmoid",
+            "nasal_cavity_left",
+            "nasal_cavity_right",
+            "skull",
+        ],
+        minimum_expected_volume_ml=0.05,
+        maximum_expected_volume_ml=300.0,
+    ),
     "ent_threshold": AnalysisPreset(
         key="ent_threshold",
         title="ENT CT: bone + airway",

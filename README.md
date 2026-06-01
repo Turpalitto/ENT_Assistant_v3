@@ -2,6 +2,8 @@
 
 ENT Assistant v3 is a 3D Slicer helper module for ENT and head CT analysis. The starting repository was only a simple launcher around ad-hoc scripts; this version adds actual presets, reusable pipeline code, optional open-source AI segmentation, and report generation.
 
+The newest workflow also targets `AI-assisted CT sinus reporting` for paranasal sinus CT studies, with sinus-focused anatomy tracking, pathology heuristics, OMC status estimation, anatomic-variant flags, and draft radiology-style text output.
+
 ## Added capabilities
 
 - Structured Slicer UI with analysis presets.
@@ -10,6 +12,7 @@ ENT Assistant v3 is a 3D Slicer helper module for ENT and head CT analysis. The 
 - Fallback threshold-based segmentation for bone, air, and soft tissue.
 - Volume measurement report export to `reports/*.json`.
 - Structured report draft inspired by open-source clinical reporting workflows.
+- Dedicated `CT PNS: AI-assisted sinus report` preset for paranasal sinus CT.
 - Rule-based QC checks for suspicious or incomplete segmentations.
 - Export pipeline for `.seg.nrrd`, `.nii.gz` labelmaps, and optional STL surfaces.
 - AI runtime options inspired by SlicerTotalSegmentator, including `fast`, CPU mode, and `robust_crop`.
@@ -22,23 +25,45 @@ ENT Assistant v3 is a 3D Slicer helper module for ENT and head CT analysis. The 
 - Auto-grouped longitudinal timeline by `PatientID + StudyDate`.
 - RTSTRUCT readiness layer for SlicerRT-aware environments.
 - Narrower ENT pathology-oriented rules for sinus aeration, nasal passages, laryngeal air column and pharyngeal disproportion.
+- Sinus CT rule engine for opacification pattern, possible fluid level, likely OMC obstruction, probable septal deviation, possible hypoplasia, and FESS-relevant anatomy flags.
+- Draft radiology report sections: `Description`, `Impression`, and `Recommendations for ENT`.
+- Findings table in the Slicer UI for sinus findings, OMC status, and anatomic variants.
 - Shared core helpers for presets and report naming.
 
 ## Open-source references used
 
 - [TotalSegmentator](https://github.com/wasserth/totalsegmentator)
+- [nnU-Net](https://github.com/MIC-DKFZ/nnUNet)
+- [MONAI Label](https://github.com/project-monai/monailabel)
 - [SlicerSegmentEditorExtraEffects](https://github.com/lassoan/SlicerSegmentEditorExtraEffects)
 - [Raidionics-Slicer](https://github.com/raidionics/Raidionics-Slicer)
 - [CloudSegmentatorResults](https://github.com/ImagingDataCommons/CloudSegmentatorResults)
+- [SlicerAirwaySegmentation](https://github.com/Slicer/SlicerAirwaySegmentation)
 
-The current presets use the public TotalSegmentator tasks `head_glands_cavities`, `headneck_bones_vessels`, and `craniofacial_structures`, which are directly relevant to ENT and head CT workflows.
+The current presets use the public TotalSegmentator tasks `head_glands_cavities`, `headneck_bones_vessels`, and `craniofacial_structures`, which are directly relevant to ENT and head CT workflows. The sinus CT preset builds a sinus-specific rule layer on top of these anatomical masks, while leaving room for a future custom `nnU-Net` / `MONAI Label` sinus model.
 
 ## Presets
 
+- `CT PNS: AI-assisted sinus report`
 - `ENT CT: bone + airway`
 - `Head & neck AI preset`
 - `Craniofacial AI preset`
 - `Larynx and hyoid AI preset`
+
+## Sinus CT workflow
+
+The `CT PNS: AI-assisted sinus report` preset is designed as a clinician-support workflow, not a standalone diagnosis engine. It currently does the following:
+
+- bootstraps anatomy from available open-source segmentation outputs
+- splits combined sinus masks into left/right measurement rows when needed
+- estimates sinus aeration and soft-tissue occupancy from CT intensities inside the segmented cavities
+- flags likely total opacification, partial opacification, probable fluid level, likely OMC obstruction, probable septal deviation, possible sinus hypoplasia, and FESS-relevant variants when enough evidence is present
+- writes structured draft sections:
+  - `Description`
+  - `Impression`
+  - `Recommendations for ENT`
+
+This is intentionally template-driven and conservative. The current implementation favors reproducible wording over free-form generative text.
 
 ## Export outputs
 
@@ -69,6 +94,17 @@ The module can add non-diagnostic heuristic flags such as:
 - `possible_nasal_asymmetry`
 
 These are screening-style computational hints only, not clinical conclusions.
+
+## Future model path
+
+The intended production architecture for sinus CT is:
+
+- `3D Slicer` for visualization, segmentation review, export, and findings table
+- `nnU-Net` or `MONAI Label` for custom sinus/pathology segmentation
+- deterministic sinus rules for interpretation
+- structured report generator for radiology-style draft text
+
+The current repository implements the Slicer shell, reporting logic, and open-source integration points. A dedicated custom sinus model still requires labeled CT training data.
 
 ## DICOM and comparison
 

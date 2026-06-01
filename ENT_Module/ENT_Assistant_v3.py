@@ -34,7 +34,7 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
 
         title = qt.QLabel(
             "<h2>ENT Assistant v3</h2>"
-            "<p>Analyze ENT and head CT studies with threshold presets or open-source AI segmentation.</p>"
+            "<p>Analyze ENT and sinus CT studies with threshold presets, open-source AI segmentation and radiology-style draft reporting.</p>"
         )
         title.setWordWrap(True)
         layout.addWidget(title)
@@ -116,7 +116,7 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         thresholdsForm.addRow("Air max HU", self.airMaxSpin)
         layout.addLayout(thresholdsForm)
 
-        self.runBtn = qt.QPushButton("Run CT analysis")
+        self.runBtn = qt.QPushButton("Run ENT / sinus CT analysis")
         self.runBtn.clicked.connect(self.runPipeline)
         layout.addWidget(self.runBtn)
 
@@ -143,6 +143,13 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.output = qt.QTextEdit()
         self.output.setReadOnly(True)
         layout.addWidget(self.output)
+
+        self.findingsTable = qt.QTableWidget()
+        self.findingsTable.setColumnCount(4)
+        self.findingsTable.setHorizontalHeaderLabels(["Category", "Structure", "Status", "Details"])
+        self.findingsTable.horizontalHeader().setStretchLastSection(True)
+        self.findingsTable.setEditTriggers(qt.QAbstractItemView.NoEditTriggers)
+        layout.addWidget(self.findingsTable)
 
         self.presetCombo.currentIndexChanged.connect(self.updatePresetDescription)
         self.updatePresetDescription()
@@ -171,6 +178,7 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             )
 
             self.output.clear()
+            self.populateFindingsTable([])
             result = module.run_ent_analysis(config, log_callback=self.appendOutput)
             if "cases" in result:
                 self.appendOutput(f"Batch completed: {result['count']} volumes")
@@ -184,6 +192,8 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                     self.appendOutput(f"Timeline index: {result['timelinePath']}")
                 for comparison in result.get("comparisons", [])[:2]:
                     self.appendOutput(comparison.get("summaryText", ""))
+                first_case = (result.get("cases") or [{}])[0]
+                self.populateFindingsTable(((first_case.get("sinusReport") or {}).get("findingRows")) or [])
                 return
             self.appendOutput("")
             self.appendOutput(f"Completed preset: {result['preset']}")
@@ -195,6 +205,11 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             rtstruct_readiness = result.get("rtstructReadiness")
             if rtstruct_readiness:
                 self.appendOutput(f"RTSTRUCT ready: {rtstruct_readiness.get('ready')}")
+            sinus_report = result.get("sinusReport")
+            if sinus_report:
+                self.appendOutput("")
+                self.appendOutput(sinus_report.get("reportText", ""))
+                self.populateFindingsTable(sinus_report.get("findingRows") or [])
         except Exception as error:
             self.output.setText(f"Pipeline error:\n{error}")
 
@@ -268,6 +283,16 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         text = f"{existing}\n{message}".strip() if existing else str(message)
         self.output.setPlainText(text)
         self.output.verticalScrollBar().setValue(self.output.verticalScrollBar().maximum)
+
+    def populateFindingsTable(self, rows):
+        self.findingsTable.setRowCount(len(rows))
+        for row_index, row in enumerate(rows):
+            self.findingsTable.setItem(row_index, 0, qt.QTableWidgetItem(str(row.get("category", ""))))
+            self.findingsTable.setItem(row_index, 1, qt.QTableWidgetItem(str(row.get("structure", ""))))
+            self.findingsTable.setItem(row_index, 2, qt.QTableWidgetItem(str(row.get("status", ""))))
+            self.findingsTable.setItem(row_index, 3, qt.QTableWidgetItem(str(row.get("details", ""))))
+        if not rows:
+            self.findingsTable.setRowCount(0)
 
     def _load_python_module(self, module_name, path):
         spec = importlib.util.spec_from_file_location(module_name, path)
