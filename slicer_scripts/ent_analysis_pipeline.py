@@ -478,13 +478,13 @@ class ENTAnalysisPipeline:
         ready = module_available and plugin_available and dicom_database_available and dicom_instance_uids
         reasons = []
         if not module_available:
-            reasons.append("SlicerRT export module not detected.")
+            reasons.append("SlicerRT export module not detected. Install SlicerRT from the 3D Slicer Extension Manager.")
         if not plugin_available:
-            reasons.append("DicomRtImportExportPlugin is not available in this session.")
+            reasons.append("DicomRtImportExportPlugin is not available in this session. Install or enable SlicerRT.")
         if not dicom_database_available:
             reasons.append("Slicer DICOM database is not available.")
         if not dicom_instance_uids:
-            reasons.append("Volume was not loaded with DICOM instance UIDs.")
+            reasons.append("Volume was not loaded with DICOM instance UIDs. Load the study through the DICOM module.")
         return {
             "ready": ready,
             "moduleAvailable": module_available,
