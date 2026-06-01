@@ -81,10 +81,11 @@ Comparison mode summarizes overlapping segment deltas between consecutive cases 
 The module now checks whether the current 3D Slicer environment looks ready for RTSTRUCT export:
 
 - SlicerRT-related module detected
+- `DicomRtImportExportPlugin` available in-session
 - Slicer DICOM database available
 - volume loaded with DICOM instance UIDs
 
-The current implementation is intentionally conservative: it reports readiness and only performs safe export attempts that are known to be supported by the current session.
+When readiness passes, the module attempts scripted RTSTRUCT export through SlicerRT's `DicomRtImportExportPlugin` by exporting both the primary anatomical CT volume and the segmentation together.
 
 ## Installing AI support
 

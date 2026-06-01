@@ -35,4 +35,5 @@ This repository now uses or aligns with the following open-source projects:
 - CSV registry output is added as a lightweight interoperability layer for spreadsheet, QA and annotation-review workflows often seen around MONAI Label and radiology dataset curation pipelines.
 - DICOM metadata harvesting and machine-readable comparison outputs follow the same general workflow direction seen in MONAI Label DICOMWeb pipelines, MONAI Deploy integration patterns, and SlicerRT-style structured analysis/export.
 - RTSTRUCT readiness checks are informed by SlicerRT export expectations, especially the need for the primary anatomical DICOM image context to be present during RT export workflows.
+- The scripted RTSTRUCT export path follows the Slicer/SlicerRT community guidance of exporting the anatomical volume and segmentation together via `DicomRtImportExportPlugin.examineForExport(...)`.
 - The narrower ENT heuristics take inspiration from clinically useful volumetric postprocessing patterns seen in analyzer-style open-source Slicer extensions such as LungCTAnalyzer, adapted here as non-diagnostic ENT screening rules.

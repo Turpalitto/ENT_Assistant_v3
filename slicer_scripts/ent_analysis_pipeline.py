@@ -472,12 +472,15 @@ class ENTAnalysisPipeline:
 
     def _check_rtstruct_readiness(self, volume_node) -> Dict[str, object]:
         module_available = hasattr(slicer.modules, "dicomrtimportexport") or hasattr(slicer.modules, "beams")
+        plugin_available = self._get_rtstruct_exporter() is not None
         dicom_database_available = bool(getattr(slicer, "dicomDatabase", None))
         dicom_instance_uids = bool(volume_node.GetAttribute("DICOM.instanceUIDs"))
-        ready = module_available and dicom_database_available and dicom_instance_uids
+        ready = module_available and plugin_available and dicom_database_available and dicom_instance_uids
         reasons = []
         if not module_available:
             reasons.append("SlicerRT export module not detected.")
+        if not plugin_available:
+            reasons.append("DicomRtImportExportPlugin is not available in this session.")
         if not dicom_database_available:
             reasons.append("Slicer DICOM database is not available.")
         if not dicom_instance_uids:
@@ -485,9 +488,77 @@ class ENTAnalysisPipeline:
         return {
             "ready": ready,
             "moduleAvailable": module_available,
+            "pluginAvailable": plugin_available,
             "dicomDatabaseAvailable": dicom_database_available,
             "hasDicomInstanceUids": dicom_instance_uids,
             "notes": reasons or ["Environment looks ready for RTSTRUCT export attempts."],
+        }
+
+    def _get_rtstruct_exporter(self):
+        try:
+            import DicomRtImportExportPlugin
+
+            exporter_class = getattr(DicomRtImportExportPlugin, "DicomRtImportExportPluginClass", None)
+            if exporter_class:
+                return exporter_class()
+        except Exception:
+            pass
+        try:
+            dicom_plugins = getattr(slicer.modules, "dicomPlugins", None)
+            plugin_class = dicom_plugins.get("DicomRtImportExportPlugin") if dicom_plugins else None
+            if plugin_class:
+                return plugin_class()
+        except Exception:
+            pass
+        return None
+
+    def _attempt_rtstruct_export(self, case_dir, segmentation_node, volume_node) -> Dict[str, object]:
+        exporter = self._get_rtstruct_exporter()
+        if exporter is None:
+            return {"success": False, "message": "DicomRtImportExportPlugin is not available."}
+
+        sh_node = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+        volume_item_id = sh_node.GetItemByDataNode(volume_node)
+        segmentation_item_id = sh_node.GetItemByDataNode(segmentation_node)
+        if not volume_item_id or not segmentation_item_id:
+            return {"success": False, "message": "Subject hierarchy items were not found for volume/segmentation."}
+
+        study_item_id = sh_node.GetItemParent(volume_item_id)
+        if study_item_id:
+            sh_node.SetItemParent(segmentation_item_id, study_item_id)
+
+        exportables = []
+        errors = []
+        for item_id, label in [(volume_item_id, "volume"), (segmentation_item_id, "segmentation")]:
+            try:
+                exportables.extend(exporter.examineForExport(item_id))
+            except Exception as error:
+                errors.append(f"{label} examineForExport failed: {error}")
+
+        if errors:
+            return {"success": False, "message": " | ".join(errors)}
+        if not exportables:
+            return {"success": False, "message": "No exportables were returned by SlicerRT exporter."}
+
+        output_dir = str(case_dir / "rtstruct_dicom")
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        for exportable in exportables:
+            try:
+                exportable.directory = output_dir
+            except Exception:
+                pass
+
+        try:
+            export_result = exporter.export(exportables)
+        except Exception as error:
+            return {"success": False, "message": f"RTSTRUCT export call failed: {error}"}
+
+        success = bool(export_result) or export_result is None
+        return {
+            "success": success,
+            "message": "RTSTRUCT export attempted through DicomRtImportExportPlugin.",
+            "directory": output_dir,
+            "rawResult": str(export_result),
         }
 
     def _export_results(self, segmentation_node, volume_node, preset, config: AnalysisConfig) -> Dict[str, object]:
@@ -548,9 +619,14 @@ class ENTAnalysisPipeline:
             readiness = self._check_rtstruct_readiness(volume_node)
             export_info["rtstructReadiness"] = readiness
             if readiness.get("ready"):
-                export_info.setdefault("warnings", []).append(
-                    "RTSTRUCT environment detected, but automatic scripted export is not executed unless a verified SlicerRT export API is available in-session."
-                )
+                rtstruct_result = self._attempt_rtstruct_export(case_dir, segmentation_node, volume_node)
+                export_info["rtstructExport"] = rtstruct_result
+                if rtstruct_result.get("success") and rtstruct_result.get("directory"):
+                    export_info["files"].append(str(Path(rtstruct_result["directory"]) / "*.dcm"))
+                else:
+                    export_info.setdefault("warnings", []).append(
+                        f"RTSTRUCT export attempt did not complete: {rtstruct_result.get('message')}"
+                    )
             else:
                 export_info.setdefault("warnings", []).append(
                     "RTSTRUCT export skipped because readiness checks did not pass."
