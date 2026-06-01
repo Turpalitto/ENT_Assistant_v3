@@ -2,6 +2,7 @@ import pathlib
 import unittest
 
 from ENT_Module.ent_assistant_core import (
+    build_case_comparison,
     build_ent_summary,
     build_impression,
     build_quality_checks,
@@ -77,6 +78,15 @@ class EntAssistantCoreTests(unittest.TestCase):
         self.assertTrue(summary["airwayOrCavitySegments"])
         self.assertTrue(summary["strongestAsymmetry"])
         self.assertTrue(summary["heuristicFlags"])
+
+    def test_build_case_comparison(self):
+        comparison = build_case_comparison(
+            {"volumeName": "study_a", "measurements": [{"segment": "nasal_cavity_left", "volume_ml": 3.0}]},
+            {"volumeName": "study_b", "measurements": [{"segment": "nasal_cavity_left", "volume_ml": 5.5}]},
+        )
+        self.assertEqual(comparison["previousCase"], "study_a")
+        self.assertEqual(comparison["currentCase"], "study_b")
+        self.assertTrue(comparison["segmentDeltas"])
 
 
 if __name__ == "__main__":

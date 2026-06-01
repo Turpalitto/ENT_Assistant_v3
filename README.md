@@ -17,6 +17,8 @@ ENT Assistant v3 is a 3D Slicer helper module for ENT and head CT analysis. The 
 - ENT-oriented summary for airway/cavity structures and left/right asymmetry.
 - Batch CSV registry for downstream triage, QA and spreadsheet workflows.
 - Heuristic ENT flags for possible reduced aeration and notable nasal asymmetry.
+- Pairwise follow-up comparison between sequential or first-two loaded studies.
+- DICOM-oriented study metadata export when volumes come from Slicer DICOM loading.
 - Shared core helpers for presets and report naming.
 
 ## Open-source references used
@@ -49,9 +51,11 @@ The module can now analyze:
 
 - only the active volume
 - all loaded scalar volumes in the current Slicer scene
+- the first two loaded scalar volumes as a follow-up comparison pair
 
 Batch runs write per-case JSON reports plus `reports/batch_index.json`.
 They also write `reports/batch_registry.csv` for quick review in Excel/Sheets.
+If at least two cases are processed, they also write `reports/comparison_index.json`.
 
 ## Heuristic flags
 
@@ -61,6 +65,12 @@ The module can add non-diagnostic heuristic flags such as:
 - `possible_nasal_asymmetry`
 
 These are screening-style computational hints only, not clinical conclusions.
+
+## DICOM and comparison
+
+When a volume was loaded from the Slicer DICOM database, the report can include patient/study/series metadata fields already available in the local DICOM index.
+
+Comparison mode summarizes overlapping segment deltas between consecutive cases in batch mode or between the first two loaded studies in `compare_first_two`.
 
 ## Installing AI support
 

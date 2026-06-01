@@ -255,6 +255,49 @@ def build_ent_summary_text(
     return "; ".join(chunks) + "."
 
 
+def build_case_comparison(previous_case: Dict[str, object], current_case: Dict[str, object]) -> Dict[str, object]:
+    previous_measurements = {
+        row.get("segment"): row for row in previous_case.get("measurements", []) if row.get("segment")
+    }
+    current_measurements = {
+        row.get("segment"): row for row in current_case.get("measurements", []) if row.get("segment")
+    }
+    deltas = []
+    for segment_name in sorted(set(previous_measurements.keys()) & set(current_measurements.keys())):
+        previous_volume = float(previous_measurements[segment_name].get("volume_ml", 0.0))
+        current_volume = float(current_measurements[segment_name].get("volume_ml", 0.0))
+        delta_volume = round(current_volume - previous_volume, 2)
+        delta_percent = None if previous_volume == 0 else round((delta_volume / previous_volume) * 100.0, 2)
+        deltas.append(
+            {
+                "segment": segment_name,
+                "previousVolumeMl": round(previous_volume, 2),
+                "currentVolumeMl": round(current_volume, 2),
+                "deltaVolumeMl": delta_volume,
+                "deltaPercent": delta_percent,
+            }
+        )
+    deltas.sort(key=lambda row: abs(float(row.get("deltaVolumeMl", 0.0))), reverse=True)
+    return {
+        "previousCase": previous_case.get("volumeName"),
+        "currentCase": current_case.get("volumeName"),
+        "segmentDeltas": deltas,
+        "summaryText": build_case_comparison_text(previous_case.get("volumeName"), current_case.get("volumeName"), deltas),
+    }
+
+
+def build_case_comparison_text(previous_name: str, current_name: str, deltas: Iterable[Dict[str, object]]) -> str:
+    rows = list(deltas)
+    if not rows:
+        return f"Comparison {previous_name} -> {current_name}: no overlapping segment names for comparison."
+    lead = rows[:3]
+    return (
+        f"Comparison {previous_name} -> {current_name}: "
+        + ", ".join(f"{row['segment']} {row['deltaVolumeMl']:+.2f} mL" for row in lead)
+        + "."
+    )
+
+
 def build_quality_checks(preset: AnalysisPreset, measurements: Iterable[Dict[str, object]]) -> List[Dict[str, object]]:
     rows = list(measurements)
     findings: List[Dict[str, object]] = []

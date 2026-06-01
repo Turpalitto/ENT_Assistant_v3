@@ -33,3 +33,4 @@ This repository now uses or aligns with the following open-source projects:
 - Slicer core export documentation is the reference for writing segmentation outputs as `.seg.nrrd`, labelmaps, and surface files.
 - Batch-style report indexing in this project follows the same general open-source principle of reproducible per-case outputs plus a machine-readable aggregate index.
 - CSV registry output is added as a lightweight interoperability layer for spreadsheet, QA and annotation-review workflows often seen around MONAI Label and radiology dataset curation pipelines.
+- DICOM metadata harvesting and machine-readable comparison outputs follow the same general workflow direction seen in MONAI Label DICOMWeb pipelines, MONAI Deploy integration patterns, and SlicerRT-style structured analysis/export.

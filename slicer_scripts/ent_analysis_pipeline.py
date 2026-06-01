@@ -20,6 +20,7 @@ if REPO_ROOT not in sys.path:
 
 from ENT_Module.ent_assistant_core import (
     AnalysisConfig,
+    build_case_comparison,
     build_ent_summary,
     build_report_path,
     build_impression,
@@ -51,16 +52,22 @@ class ENTAnalysisPipeline:
             results.append(self._run_for_volume(volume_node, config))
         batch_export = self._save_batch_index(results, config) if results and config.save_report else None
         batch_csv = self._save_batch_csv(results, config) if results and config.save_report else None
+        comparisons = self._build_batch_comparisons(results)
+        comparison_index = self._save_comparison_index(comparisons, config) if comparisons and config.save_report else None
         if batch_export:
             self.log(f"Batch index saved: {batch_export}")
         if batch_csv:
             self.log(f"Batch CSV saved: {batch_csv}")
+        if comparison_index:
+            self.log(f"Comparison index saved: {comparison_index}")
         return {
             "mode": config.batch_mode,
             "count": len(results),
             "cases": results,
             "batchIndexPath": batch_export,
             "batchCsvPath": batch_csv,
+            "comparisons": comparisons,
+            "comparisonIndexPath": comparison_index,
         }
 
     def _run_for_volume(self, volume_node, config: AnalysisConfig) -> Dict[str, object]:
@@ -96,6 +103,7 @@ class ENTAnalysisPipeline:
         self.log(ent_summary["summaryText"])
         return {
             "volumeName": volume_node.GetName(),
+            "studyInfo": self._extract_study_info(volume_node),
             "preset": preset.title,
             "segmentationNodeName": segmentation_node.GetName(),
             "measurements": measurements,
@@ -112,6 +120,10 @@ class ENTAnalysisPipeline:
             raise RuntimeError("No loaded scalar volume was found in the scene.")
         if batch_mode == "all":
             return list(volumes)
+        if batch_mode == "compare_first_two":
+            if len(volumes) < 2:
+                raise RuntimeError("Comparison mode requires at least two loaded scalar volumes.")
+            return list(volumes)[:2]
         return [volumes[0]]
 
     def _get_active_volume(self):
@@ -334,6 +346,8 @@ class ENTAnalysisPipeline:
                     "topAsymmetryRatio",
                     "heuristicFlags",
                     "qcCodes",
+                    "dicomStudyDate",
+                    "dicomSeriesDescription",
                 ],
             )
             writer.writeheader()
@@ -356,6 +370,8 @@ class ENTAnalysisPipeline:
                         "topAsymmetryRatio": top_asymmetry.get("ratio"),
                         "heuristicFlags": " | ".join(flag.get("code", "") for flag in flags),
                         "qcCodes": " | ".join(finding.get("code", "") for finding in result.get("qualityChecks", [])),
+                        "dicomStudyDate": (result.get("studyInfo") or {}).get("dicomStudyDate"),
+                        "dicomSeriesDescription": (result.get("studyInfo") or {}).get("dicomSeriesDescription"),
                     }
                 )
         return str(csv_path)
@@ -364,11 +380,50 @@ class ENTAnalysisPipeline:
         node_name = volume_node.GetName()
         spacing = [round(value, 4) for value in volume_node.GetSpacing()]
         dimensions = list(volume_node.GetImageData().GetDimensions()) if volume_node.GetImageData() else None
-        return {
+        payload = {
             "volumeName": node_name,
             "spacingMm": spacing,
             "dimensionsVoxels": dimensions,
         }
+        payload.update(self._extract_dicom_metadata(volume_node))
+        return payload
+
+    def _extract_dicom_metadata(self, volume_node) -> Dict[str, object]:
+        payload: Dict[str, object] = {}
+        try:
+            instance_uids = volume_node.GetAttribute("DICOM.instanceUIDs")
+            if not instance_uids:
+                return payload
+            first_uid = str(instance_uids).split()[0]
+            database = getattr(slicer, "dicomDatabase", None)
+            if not database:
+                return payload
+            payload["dicomInstanceUid"] = first_uid
+            payload["dicomPatientName"] = database.fileValue(first_uid, "0010,0010")
+            payload["dicomPatientId"] = database.fileValue(first_uid, "0010,0020")
+            payload["dicomStudyDate"] = database.fileValue(first_uid, "0008,0020")
+            payload["dicomStudyDescription"] = database.fileValue(first_uid, "0008,1030")
+            payload["dicomSeriesDescription"] = database.fileValue(first_uid, "0008,103E")
+            payload["dicomModality"] = database.fileValue(first_uid, "0008,0060")
+        except Exception:
+            return payload
+        return {key: value for key, value in payload.items() if value}
+
+    def _build_batch_comparisons(self, results) -> List[Dict[str, object]]:
+        if len(results) < 2:
+            return []
+        return [build_case_comparison(previous_case, current_case) for previous_case, current_case in zip(results, results[1:])]
+
+    def _save_comparison_index(self, comparisons, config: AnalysisConfig) -> str:
+        report_dir = ensure_report_dir(config.report_dir, REPO_ROOT)
+        path = report_dir / "comparison_index.json"
+        payload = {
+            "generatedAt": __import__("datetime").datetime.now().isoformat(),
+            "count": len(comparisons),
+            "comparisons": comparisons,
+        }
+        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        return str(path)
 
     def _format_quality_summary(self, quality_checks) -> str:
         if not quality_checks:
@@ -450,6 +505,6 @@ class ENTAnalysisPipeline:
 
 def run_ent_analysis(config: AnalysisConfig, log_callback=None) -> Dict[str, object]:
     pipeline = ENTAnalysisPipeline(log_callback=log_callback)
-    if config.batch_mode == "all":
+    if config.batch_mode in {"all", "compare_first_two"}:
         return pipeline.run_batch(config)
     return pipeline.run(config)

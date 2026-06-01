@@ -52,7 +52,7 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         layout.addWidget(self.presetDescription)
 
         self.batchModeCombo = qt.QComboBox()
-        self.batchModeCombo.addItems(["active", "all"])
+        self.batchModeCombo.addItems(["active", "all", "compare_first_two"])
         batchModeForm = qt.QFormLayout()
         batchModeForm.addRow("Batch mode", self.batchModeCombo)
         layout.addLayout(batchModeForm)
@@ -173,6 +173,10 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                     self.appendOutput(f"Batch index: {result['batchIndexPath']}")
                 if result.get("batchCsvPath"):
                     self.appendOutput(f"Batch CSV: {result['batchCsvPath']}")
+                if result.get("comparisonIndexPath"):
+                    self.appendOutput(f"Comparison index: {result['comparisonIndexPath']}")
+                for comparison in result.get("comparisons", [])[:2]:
+                    self.appendOutput(comparison.get("summaryText", ""))
                 return
             self.appendOutput("")
             self.appendOutput(f"Completed preset: {result['preset']}")
