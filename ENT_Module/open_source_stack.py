@@ -49,6 +49,13 @@ OPEN_SOURCE_COMPONENTS = [
         "purpose": "Rule-based QC inspiration for suspicious AI segmentation outputs and volumetric sanity checks.",
         "source": "https://github.com/ImagingDataCommons/CloudSegmentatorResults",
     },
+    {
+        "name": "Slicer export workflow reference",
+        "type": "reference",
+        "check": lambda: True,
+        "purpose": "Reference for segmentation export to labelmaps and closed-surface formats.",
+        "source": "https://github.com/Slicer/Slicer/blob/main/Docs/user_guide/data_loading_and_saving.md",
+    },
 ]
 
 
@@ -73,5 +80,6 @@ def inspect_open_source_stack() -> Dict[str, object]:
     lines.append("- TotalSegmentator for automatic ENT/head segmentation")
     lines.append("- SegmentEditorExtraEffects for local refinement in Slicer")
     lines.append("- MONAI Label or SlicerNNInteractive for interactive annotation workflows")
+    lines.append("- Slicer export workflow for .seg.nrrd, labelmaps and surface models")
 
     return {"components": rows, "summary": "\n".join(lines)}

@@ -9,6 +9,10 @@ This repository now uses or aligns with the following open-source projects:
   - `head_glands_cavities`
   - `headneck_bones_vessels`
   - `craniofacial_structures`
+  Also used as design reference for:
+  - `fast` inference mode
+  - `robust_crop`
+  - CPU execution fallback
 
 ## Checked by the module
 
@@ -26,3 +30,4 @@ This repository now uses or aligns with the following open-source projects:
 - `MONAI Label` and `SlicerNNInteractive` are good next steps if this project evolves into interactive annotation or dataset-building workflows for ENT/head pathology.
 - `Raidionics-Slicer` is a useful open-source reference for standardized report generation patterns inside 3D Slicer.
 - `CloudSegmentatorResults` is a useful open-source reference for rule-based segmentation QC, especially volume sanity checks and suspicious-output filtering.
+- Slicer core export documentation is the reference for writing segmentation outputs as `.seg.nrrd`, labelmaps, and surface files.

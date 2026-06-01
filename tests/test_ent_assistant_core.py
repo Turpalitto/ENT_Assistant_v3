@@ -5,6 +5,7 @@ from ENT_Module.ent_assistant_core import (
     build_impression,
     build_quality_checks,
     build_report_path,
+    ensure_export_dir,
     get_preset,
     sanitize_filename,
     summarize_measurements,
@@ -21,6 +22,10 @@ class EntAssistantCoreTests(unittest.TestCase):
     def test_build_report_path_has_json_suffix(self):
         path = build_report_path(pathlib.Path("reports"), "CT Head", "Head & neck AI preset")
         self.assertEqual(path.suffix, ".json")
+
+    def test_ensure_export_dir_default_name(self):
+        path = ensure_export_dir(None, str(pathlib.Path("demo_repo")))
+        self.assertEqual(path.name, "exports")
 
     def test_summarize_measurements(self):
         summary = summarize_measurements(

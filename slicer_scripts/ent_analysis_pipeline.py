@@ -22,8 +22,10 @@ from ENT_Module.ent_assistant_core import (
     build_report_path,
     build_impression,
     build_quality_checks,
+    ensure_export_dir,
     ensure_report_dir,
     get_preset,
+    sanitize_filename,
     summarize_measurements,
 )
 
@@ -44,7 +46,7 @@ class ENTAnalysisPipeline:
             executable = self._find_totalsegmentator()
             if executable:
                 self.log(f"Using TotalSegmentator: {executable}")
-                segmentation_node = self._run_totalsegmentator(volume_node, preset, executable)
+                segmentation_node = self._run_totalsegmentator(volume_node, preset, executable, config)
             else:
                 self.log("TotalSegmentator not found. Falling back to threshold segmentation.")
                 segmentation_node = self._run_threshold_segmentation(volume_node, config)
@@ -53,9 +55,13 @@ class ENTAnalysisPipeline:
 
         measurements = self._compute_measurements(segmentation_node, volume_node)
         quality_checks = build_quality_checks(preset, measurements)
+        export_info = None
+        if config.export_results:
+            export_info = self._export_results(segmentation_node, volume_node, preset, config)
+            self.log(self._format_export_summary(export_info))
         report_path = None
         if config.save_report:
-            report_path = self._save_report(volume_node, preset.title, measurements, quality_checks, config)
+            report_path = self._save_report(volume_node, preset.title, measurements, quality_checks, export_info, config)
             self.log(f"Report saved: {report_path}")
 
         summary = summarize_measurements(measurements)
@@ -66,6 +72,7 @@ class ENTAnalysisPipeline:
             "segmentationNodeName": segmentation_node.GetName(),
             "measurements": measurements,
             "qualityChecks": quality_checks,
+            "exportInfo": export_info,
             "reportPath": report_path,
             "summary": summary,
         }
@@ -94,7 +101,7 @@ class ENTAnalysisPipeline:
             None,
         )
 
-    def _run_totalsegmentator(self, volume_node, preset, executable: str):
+    def _run_totalsegmentator(self, volume_node, preset, executable: str, config: AnalysisConfig):
         if not preset.totalsegmentator_task or not preset.expected_masks:
             raise RuntimeError(f"Preset {preset.title} is missing TotalSegmentator settings.")
 
@@ -119,6 +126,12 @@ class ENTAnalysisPipeline:
                 "--task",
                 preset.totalsegmentator_task,
             ]
+        if config.ai_quality == "fast":
+            command.append("--fast")
+        if config.robust_crop:
+            command.append("--robust_crop")
+        if config.use_cpu:
+            command.extend(["--device", "cpu"])
 
         result = subprocess.run(command, capture_output=True, text=True)
         if result.returncode != 0:
@@ -233,7 +246,7 @@ class ENTAnalysisPipeline:
             )
         return results
 
-    def _save_report(self, volume_node, preset_title: str, measurements, quality_checks, config: AnalysisConfig) -> str:
+    def _save_report(self, volume_node, preset_title: str, measurements, quality_checks, export_info, config: AnalysisConfig) -> str:
         report_dir = ensure_report_dir(config.report_dir, REPO_ROOT)
         report_path = build_report_path(report_dir, volume_node.GetName(), preset_title)
         payload = {
@@ -243,6 +256,7 @@ class ENTAnalysisPipeline:
             "studyInfo": self._extract_study_info(volume_node),
             "measurements": measurements,
             "qualityChecks": quality_checks,
+            "exports": export_info,
             "impressionDraft": build_impression(preset_title, measurements),
         }
         report_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -266,6 +280,73 @@ class ENTAnalysisPipeline:
             level = str(finding.get("level", "info")).upper()
             message = str(finding.get("message", ""))
             lines.append(f"- {level}: {message}")
+        return "\n".join(lines)
+
+    def _export_results(self, segmentation_node, volume_node, preset, config: AnalysisConfig) -> Dict[str, object]:
+        export_dir = ensure_export_dir(config.export_dir, REPO_ROOT)
+        case_dir = export_dir / f"{sanitize_filename(volume_node.GetName())}__{sanitize_filename(preset.title)}"
+        case_dir.mkdir(parents=True, exist_ok=True)
+
+        export_info: Dict[str, object] = {"directory": str(case_dir), "files": []}
+        if config.export_seg_nrrd:
+            try:
+                segmentation_path = case_dir / "segmentation.seg.nrrd"
+                if slicer.util.saveNode(segmentation_node, str(segmentation_path)):
+                    export_info["files"].append(str(segmentation_path))
+            except Exception as error:
+                export_info.setdefault("warnings", []).append(f"seg_nrrd export failed: {error}")
+
+        if config.export_labelmap_nifti:
+            try:
+                labelmap_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode", "ENT_Export_Labelmap")
+                ids = vtk.vtkStringArray()
+                segmentation = segmentation_node.GetSegmentation()
+                for index in range(segmentation.GetNumberOfSegments()):
+                    ids.InsertNextValue(segmentation.GetNthSegmentID(index))
+                slicer.modules.segmentations.logic().ExportSegmentsToLabelmapNode(
+                    segmentation_node,
+                    ids,
+                    labelmap_node,
+                    volume_node,
+                )
+                labelmap_path = case_dir / "segmentation_labelmap.nii.gz"
+                if slicer.util.saveNode(labelmap_node, str(labelmap_path)):
+                    export_info["files"].append(str(labelmap_path))
+                slicer.mrmlScene.RemoveNode(labelmap_node)
+            except Exception as error:
+                export_info.setdefault("warnings", []).append(f"labelmap export failed: {error}")
+
+        if config.export_surface_models:
+            try:
+                segmentation_node.CreateClosedSurfaceRepresentation()
+                ids = vtk.vtkStringArray()
+                segmentation = segmentation_node.GetSegmentation()
+                for index in range(segmentation.GetNumberOfSegments()):
+                    ids.InsertNextValue(segmentation.GetNthSegmentID(index))
+                slicer.modules.segmentations.logic().ExportSegmentsClosedSurfaceRepresentationToFiles(
+                    str(case_dir),
+                    segmentation_node,
+                    ids,
+                    "STL",
+                    True,
+                    1.0,
+                    False,
+                )
+                export_info["files"].append(str(case_dir / "*.stl"))
+            except Exception as error:
+                export_info.setdefault("warnings", []).append(f"surface export failed: {error}")
+
+        return export_info
+
+    def _format_export_summary(self, export_info) -> str:
+        if not export_info:
+            return "Exports: disabled."
+        files = export_info.get("files", [])
+        lines = [f"Exports saved to: {export_info.get('directory', '')}"]
+        for file_path in files:
+            lines.append(f"- {file_path}")
+        for warning in export_info.get("warnings", []):
+            lines.append(f"- WARNING: {warning}")
         return "\n".join(lines)
 
 

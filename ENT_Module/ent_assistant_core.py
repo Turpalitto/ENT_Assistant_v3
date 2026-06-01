@@ -34,6 +34,14 @@ class AnalysisConfig:
     use_totalsegmentator: bool = True
     save_report: bool = True
     report_dir: Optional[str] = None
+    export_results: bool = True
+    export_seg_nrrd: bool = True
+    export_labelmap_nifti: bool = True
+    export_surface_models: bool = False
+    export_dir: Optional[str] = None
+    ai_quality: str = "normal"
+    use_cpu: bool = False
+    robust_crop: bool = True
     bone_threshold_min: Optional[int] = None
     bone_threshold_max: Optional[int] = None
     air_threshold_min: Optional[int] = None
@@ -115,6 +123,12 @@ def sanitize_filename(value: str) -> str:
 
 def ensure_report_dir(path_hint: Optional[str], repo_root: str) -> Path:
     target = Path(path_hint) if path_hint else Path(repo_root) / "reports"
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def ensure_export_dir(path_hint: Optional[str], repo_root: str) -> Path:
+    target = Path(path_hint) if path_hint else Path(repo_root) / "exports"
     target.mkdir(parents=True, exist_ok=True)
     return target
 

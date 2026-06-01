@@ -59,6 +59,34 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.saveReportCheck.checked = True
         layout.addWidget(self.saveReportCheck)
 
+        self.exportResultsCheck = qt.QCheckBox("Export segmentation outputs to repository /exports")
+        self.exportResultsCheck.checked = True
+        layout.addWidget(self.exportResultsCheck)
+
+        self.exportSegNrrdCheck = qt.QCheckBox("Export segmentation as .seg.nrrd")
+        self.exportSegNrrdCheck.checked = True
+        layout.addWidget(self.exportSegNrrdCheck)
+
+        self.exportLabelmapCheck = qt.QCheckBox("Export labelmap as .nii.gz")
+        self.exportLabelmapCheck.checked = True
+        layout.addWidget(self.exportLabelmapCheck)
+
+        self.exportSurfaceCheck = qt.QCheckBox("Export surface models as STL")
+        self.exportSurfaceCheck.checked = False
+        layout.addWidget(self.exportSurfaceCheck)
+
+        self.aiOptionsForm = qt.QFormLayout()
+        self.aiQualityCombo = qt.QComboBox()
+        self.aiQualityCombo.addItems(["normal", "fast"])
+        self.useCpuCheck = qt.QCheckBox()
+        self.useCpuCheck.checked = False
+        self.robustCropCheck = qt.QCheckBox()
+        self.robustCropCheck.checked = True
+        self.aiOptionsForm.addRow("AI quality", self.aiQualityCombo)
+        self.aiOptionsForm.addRow("Use CPU only", self.useCpuCheck)
+        self.aiOptionsForm.addRow("Robust crop", self.robustCropCheck)
+        layout.addLayout(self.aiOptionsForm)
+
         thresholdsForm = qt.QFormLayout()
         self.boneMinSpin = qt.QSpinBox()
         self.boneMinSpin.setRange(-2000, 5000)
@@ -117,6 +145,13 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                 preset_key=self.getSelectedPresetKey(),
                 use_totalsegmentator=self.useTotalSegmentator.checked,
                 save_report=self.saveReportCheck.checked,
+                export_results=self.exportResultsCheck.checked,
+                export_seg_nrrd=self.exportSegNrrdCheck.checked,
+                export_labelmap_nifti=self.exportLabelmapCheck.checked,
+                export_surface_models=self.exportSurfaceCheck.checked,
+                ai_quality=self.aiQualityCombo.currentText,
+                use_cpu=self.useCpuCheck.checked,
+                robust_crop=self.robustCropCheck.checked,
                 bone_threshold_min=self.boneMinSpin.value,
                 bone_threshold_max=self.boneMaxSpin.value,
                 air_threshold_min=self.airMinSpin.value,
@@ -129,6 +164,9 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             self.appendOutput(f"Completed preset: {result['preset']}")
             if result.get("reportPath"):
                 self.appendOutput(f"Report: {result['reportPath']}")
+            export_info = result.get("exportInfo")
+            if export_info:
+                self.appendOutput(f"Export directory: {export_info.get('directory')}")
         except Exception as error:
             self.output.setText(f"Pipeline error:\n{error}")
 
