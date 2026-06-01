@@ -171,6 +171,8 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                 self.appendOutput(f"Batch completed: {result['count']} volumes")
                 if result.get("batchIndexPath"):
                     self.appendOutput(f"Batch index: {result['batchIndexPath']}")
+                if result.get("batchCsvPath"):
+                    self.appendOutput(f"Batch CSV: {result['batchCsvPath']}")
                 return
             self.appendOutput("")
             self.appendOutput(f"Completed preset: {result['preset']}")

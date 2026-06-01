@@ -76,6 +76,7 @@ class EntAssistantCoreTests(unittest.TestCase):
         self.assertIn("summaryText", summary)
         self.assertTrue(summary["airwayOrCavitySegments"])
         self.assertTrue(summary["strongestAsymmetry"])
+        self.assertTrue(summary["heuristicFlags"])
 
 
 if __name__ == "__main__":

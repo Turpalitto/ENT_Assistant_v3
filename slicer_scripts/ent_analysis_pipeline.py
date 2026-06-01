@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import csv
 import shutil
 import subprocess
 import sys
@@ -49,13 +50,17 @@ class ENTAnalysisPipeline:
             self.log(f"[{index}/{len(volume_nodes)}] Processing volume: {volume_node.GetName()}")
             results.append(self._run_for_volume(volume_node, config))
         batch_export = self._save_batch_index(results, config) if results and config.save_report else None
+        batch_csv = self._save_batch_csv(results, config) if results and config.save_report else None
         if batch_export:
             self.log(f"Batch index saved: {batch_export}")
+        if batch_csv:
+            self.log(f"Batch CSV saved: {batch_csv}")
         return {
             "mode": config.batch_mode,
             "count": len(results),
             "cases": results,
             "batchIndexPath": batch_export,
+            "batchCsvPath": batch_csv,
         }
 
     def _run_for_volume(self, volume_node, config: AnalysisConfig) -> Dict[str, object]:
@@ -311,6 +316,49 @@ class ENTAnalysisPipeline:
         }
         index_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         return str(index_path)
+
+    def _save_batch_csv(self, results, config: AnalysisConfig) -> str:
+        report_dir = ensure_report_dir(config.report_dir, REPO_ROOT)
+        csv_path = report_dir / "batch_registry.csv"
+        with csv_path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(
+                handle,
+                fieldnames=[
+                    "volumeName",
+                    "preset",
+                    "reportPath",
+                    "exportDirectory",
+                    "topAirwaySegment",
+                    "topAirwayVolumeMl",
+                    "topAsymmetryPair",
+                    "topAsymmetryRatio",
+                    "heuristicFlags",
+                    "qcCodes",
+                ],
+            )
+            writer.writeheader()
+            for result in results:
+                ent_summary = result.get("entSummary") or {}
+                airway_rows = ent_summary.get("airwayOrCavitySegments") or []
+                asymmetry_rows = ent_summary.get("strongestAsymmetry") or []
+                flags = ent_summary.get("heuristicFlags") or []
+                top_airway = airway_rows[0] if airway_rows else {}
+                top_asymmetry = asymmetry_rows[0] if asymmetry_rows else {}
+                writer.writerow(
+                    {
+                        "volumeName": result.get("volumeName"),
+                        "preset": result.get("preset"),
+                        "reportPath": result.get("reportPath"),
+                        "exportDirectory": (result.get("exportInfo") or {}).get("directory"),
+                        "topAirwaySegment": top_airway.get("segment"),
+                        "topAirwayVolumeMl": top_airway.get("volumeMl"),
+                        "topAsymmetryPair": " | ".join(top_asymmetry.get("pair", [])) if top_asymmetry else "",
+                        "topAsymmetryRatio": top_asymmetry.get("ratio"),
+                        "heuristicFlags": " | ".join(flag.get("code", "") for flag in flags),
+                        "qcCodes": " | ".join(finding.get("code", "") for finding in result.get("qualityChecks", [])),
+                    }
+                )
+        return str(csv_path)
 
     def _extract_study_info(self, volume_node) -> Dict[str, object]:
         node_name = volume_node.GetName()

@@ -171,6 +171,7 @@ def build_ent_summary(preset: AnalysisPreset, measurements: Iterable[Dict[str, o
 
     top_airway = sorted(air_like_segments, key=lambda row: float(row.get("volume_ml", 0.0)), reverse=True)[:5]
     asymmetry = []
+    heuristic_flags = []
     for left_name, left_row in measurement_by_name.items():
         if not left_name.endswith("_left"):
             continue
@@ -191,21 +192,49 @@ def build_ent_summary(preset: AnalysisPreset, measurements: Iterable[Dict[str, o
                 "rightVolumeMl": round(right_volume, 2),
             }
         )
+        root_name = left_name[: -len("_left")]
+        if "nasal_cavity" in root_name and ratio >= 2.0:
+            heuristic_flags.append(
+                {
+                    "code": "possible_nasal_asymmetry",
+                    "message": f"Nasal cavity volume asymmetry is elevated for {root_name} ({ratio:.2f}x).",
+                }
+            )
 
     asymmetry.sort(key=lambda row: row["ratio"], reverse=True)
+    for row in top_airway:
+        segment_name = str(row.get("segment", ""))
+        volume_ml = float(row.get("volume_ml", 0.0))
+        if volume_ml < 1.0 and (
+            "nasal_cavity" in segment_name or "sinus" in segment_name or "pharynx" in segment_name or "air" in segment_name
+        ):
+            heuristic_flags.append(
+                {
+                    "code": "possible_reduced_aeration",
+                    "message": f"Air-containing structure {segment_name} has low measured volume ({volume_ml:.2f} mL).",
+                }
+            )
+
     return {
         "preset": preset.title,
         "airwayOrCavitySegments": [
             {"segment": row["segment"], "volumeMl": row["volume_ml"]} for row in top_airway
         ],
         "strongestAsymmetry": asymmetry[:3],
-        "summaryText": build_ent_summary_text(preset.title, top_airway, asymmetry[:3]),
+        "heuristicFlags": heuristic_flags,
+        "summaryText": build_ent_summary_text(preset.title, top_airway, asymmetry[:3], heuristic_flags),
     }
 
 
-def build_ent_summary_text(preset_title: str, top_airway_rows: Iterable[Dict[str, object]], asymmetry_rows: Iterable[Dict[str, object]]) -> str:
+def build_ent_summary_text(
+    preset_title: str,
+    top_airway_rows: Iterable[Dict[str, object]],
+    asymmetry_rows: Iterable[Dict[str, object]],
+    heuristic_flags: Iterable[Dict[str, object]],
+) -> str:
     airway_rows = list(top_airway_rows)
     asymmetry = list(asymmetry_rows)
+    flags = list(heuristic_flags)
     chunks = [f"{preset_title} ENT summary:"]
     if airway_rows:
         chunks.append(
@@ -221,6 +250,8 @@ def build_ent_summary_text(preset_title: str, top_airway_rows: Iterable[Dict[str
         )
     else:
         chunks.append("no measurable left/right asymmetry pairs")
+    if flags:
+        chunks.append("heuristic flags -> " + ", ".join(flag["code"] for flag in flags[:3]))
     return "; ".join(chunks) + "."
 
 

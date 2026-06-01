@@ -15,6 +15,8 @@ ENT Assistant v3 is a 3D Slicer helper module for ENT and head CT analysis. The 
 - AI runtime options inspired by SlicerTotalSegmentator, including `fast`, CPU mode, and `robust_crop`.
 - Batch analysis mode for processing all loaded CT volumes in one run.
 - ENT-oriented summary for airway/cavity structures and left/right asymmetry.
+- Batch CSV registry for downstream triage, QA and spreadsheet workflows.
+- Heuristic ENT flags for possible reduced aeration and notable nasal asymmetry.
 - Shared core helpers for presets and report naming.
 
 ## Open-source references used
@@ -49,6 +51,16 @@ The module can now analyze:
 - all loaded scalar volumes in the current Slicer scene
 
 Batch runs write per-case JSON reports plus `reports/batch_index.json`.
+They also write `reports/batch_registry.csv` for quick review in Excel/Sheets.
+
+## Heuristic flags
+
+The module can add non-diagnostic heuristic flags such as:
+
+- `possible_reduced_aeration`
+- `possible_nasal_asymmetry`
+
+These are screening-style computational hints only, not clinical conclusions.
 
 ## Installing AI support
 
