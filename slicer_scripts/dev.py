@@ -1,48 +1,39 @@
 # ==========================================
 # ENT Assistant DEV Script
-# Всё временное писать сюда
+# Temporary experiments can live here.
 # ==========================================
 
-import slicer
 import numpy as np
+import slicer
 
 
 def get_active_volume():
     volumes = slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode")
     if not volumes:
-        raise RuntimeError("❌ Нет загруженного volume")
+        raise RuntimeError("No loaded volume found.")
     return volumes[0]
 
 
 def simple_bone_3d(threshold=300):
-    volumeNode = get_active_volume()
+    volume_node = get_active_volume()
 
-    segNode = slicer.mrmlScene.AddNewNodeByClass(
-        "vtkMRMLSegmentationNode", "DEV_Bone_Seg"
-    )
-    segNode.CreateDefaultDisplayNodes()
-    segNode.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
+    seg_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode", "DEV_Bone_Seg")
+    seg_node.CreateDefaultDisplayNodes()
+    seg_node.SetReferenceImageGeometryParameterFromVolumeNode(volume_node)
 
-    arr = slicer.util.arrayFromVolume(volumeNode)
-    mask = (arr > threshold).astype(np.uint8)
+    array = slicer.util.arrayFromVolume(volume_node)
+    mask = (array > threshold).astype(np.uint8)
 
-    labelmap = slicer.mrmlScene.AddNewNodeByClass(
-        "vtkMRMLLabelMapVolumeNode", "TempLabel"
-    )
-
+    labelmap = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode", "TempLabel")
     slicer.util.updateVolumeFromArray(labelmap, mask)
-    labelmap.CopyOrientation(volumeNode)
+    labelmap.CopyOrientation(volume_node)
 
-    slicer.modules.segmentations.logic().ImportLabelmapToSegmentationNode(
-        labelmap, segNode
-    )
-
+    slicer.modules.segmentations.logic().ImportLabelmapToSegmentationNode(labelmap, seg_node)
     slicer.mrmlScene.RemoveNode(labelmap)
 
-    segNode.CreateClosedSurfaceRepresentation()
-    segNode.GetDisplayNode().SetVisibility3D(True)
-
-    print("✅ DEV 3D bone created")
+    seg_node.CreateClosedSurfaceRepresentation()
+    seg_node.GetDisplayNode().SetVisibility3D(True)
+    print("DEV 3D bone created")
 
 
 def run():
