@@ -504,12 +504,75 @@ class ENTAnalysisPipeline:
         except Exception:
             pass
         try:
+            scripted_modules_path = self._get_slicerrt_scripted_modules_path()
+            if scripted_modules_path and scripted_modules_path not in sys.path:
+                sys.path.append(scripted_modules_path)
+            if scripted_modules_path:
+                import DicomRtImportExportPlugin
+
+                exporter_class = getattr(DicomRtImportExportPlugin, "DicomRtImportExportPluginClass", None)
+                if exporter_class:
+                    return exporter_class()
+        except Exception:
+            pass
+        try:
             dicom_plugins = getattr(slicer.modules, "dicomPlugins", None)
             plugin_class = dicom_plugins.get("DicomRtImportExportPlugin") if dicom_plugins else None
             if plugin_class:
                 return plugin_class()
         except Exception:
             pass
+        return None
+
+    def _get_slicerrt_scripted_modules_path(self) -> Optional[str]:
+        candidates = []
+        try:
+            extensions_manager = slicer.app.extensionsManagerModel()
+            extensions_path = extensions_manager.extensionsInstallPath if extensions_manager else None
+            if extensions_path:
+                version_major = slicer.app.majorVersion
+                version_minor = slicer.app.minorVersion
+                candidates.append(
+                    os.path.join(
+                        extensions_path,
+                        "SlicerRT",
+                        "lib",
+                        f"Slicer-{version_major}.{version_minor}",
+                        "qt-scripted-modules",
+                    )
+                )
+        except Exception:
+            pass
+
+        # Windows fallback for known local installation layout.
+        app_dir = os.path.dirname(getattr(slicer.app, "applicationFilePath", "") or "")
+        if app_dir:
+            candidates.append(
+                os.path.join(
+                    app_dir,
+                    "slicer.org",
+                    "Extensions-34045",
+                    "SlicerRT",
+                    "lib",
+                    f"Slicer-{slicer.app.majorVersion}.{slicer.app.minorVersion}",
+                    "qt-scripted-modules",
+                )
+            )
+            candidates.append(
+                os.path.join(
+                    os.path.dirname(app_dir),
+                    "slicer.org",
+                    "Extensions-34045",
+                    "SlicerRT",
+                    "lib",
+                    f"Slicer-{slicer.app.majorVersion}.{slicer.app.minorVersion}",
+                    "qt-scripted-modules",
+                )
+            )
+
+        for candidate in candidates:
+            if candidate and os.path.exists(os.path.join(candidate, "DicomRtImportExportPlugin.py")):
+                return candidate
         return None
 
     def _attempt_rtstruct_export(self, case_dir, segmentation_node, volume_node) -> Dict[str, object]:
