@@ -19,6 +19,7 @@ if REPO_ROOT not in sys.path:
 
 from ENT_Module.ent_assistant_core import (
     AnalysisConfig,
+    build_ent_summary,
     build_report_path,
     build_impression,
     build_quality_checks,
@@ -39,6 +40,25 @@ class ENTAnalysisPipeline:
 
     def run(self, config: AnalysisConfig) -> Dict[str, object]:
         volume_node = self._get_active_volume()
+        return self._run_for_volume(volume_node, config)
+
+    def run_batch(self, config: AnalysisConfig) -> Dict[str, object]:
+        volume_nodes = self._get_volume_nodes(config.batch_mode)
+        results = []
+        for index, volume_node in enumerate(volume_nodes, start=1):
+            self.log(f"[{index}/{len(volume_nodes)}] Processing volume: {volume_node.GetName()}")
+            results.append(self._run_for_volume(volume_node, config))
+        batch_export = self._save_batch_index(results, config) if results and config.save_report else None
+        if batch_export:
+            self.log(f"Batch index saved: {batch_export}")
+        return {
+            "mode": config.batch_mode,
+            "count": len(results),
+            "cases": results,
+            "batchIndexPath": batch_export,
+        }
+
+    def _run_for_volume(self, volume_node, config: AnalysisConfig) -> Dict[str, object]:
         preset = get_preset(config.preset_key)
         self.log(f"Starting preset: {preset.title}")
 
@@ -55,33 +75,42 @@ class ENTAnalysisPipeline:
 
         measurements = self._compute_measurements(segmentation_node, volume_node)
         quality_checks = build_quality_checks(preset, measurements)
+        ent_summary = build_ent_summary(preset, measurements)
         export_info = None
         if config.export_results:
             export_info = self._export_results(segmentation_node, volume_node, preset, config)
             self.log(self._format_export_summary(export_info))
         report_path = None
         if config.save_report:
-            report_path = self._save_report(volume_node, preset.title, measurements, quality_checks, export_info, config)
+            report_path = self._save_report(volume_node, preset.title, measurements, quality_checks, ent_summary, export_info, config)
             self.log(f"Report saved: {report_path}")
 
         summary = summarize_measurements(measurements)
         self.log(summary)
         self.log(self._format_quality_summary(quality_checks))
+        self.log(ent_summary["summaryText"])
         return {
+            "volumeName": volume_node.GetName(),
             "preset": preset.title,
             "segmentationNodeName": segmentation_node.GetName(),
             "measurements": measurements,
             "qualityChecks": quality_checks,
+            "entSummary": ent_summary,
             "exportInfo": export_info,
             "reportPath": report_path,
             "summary": summary,
         }
 
-    def _get_active_volume(self):
+    def _get_volume_nodes(self, batch_mode: str):
         volumes = slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode")
         if not volumes:
             raise RuntimeError("No loaded scalar volume was found in the scene.")
-        volume_node = volumes[0]
+        if batch_mode == "all":
+            return list(volumes)
+        return [volumes[0]]
+
+    def _get_active_volume(self):
+        volume_node = self._get_volume_nodes("active")[0]
         selection_node = slicer.app.applicationLogic().GetSelectionNode()
         selection_node.SetReferenceActiveVolumeID(volume_node.GetID())
         slicer.app.applicationLogic().PropagateVolumeSelection()
@@ -246,7 +275,7 @@ class ENTAnalysisPipeline:
             )
         return results
 
-    def _save_report(self, volume_node, preset_title: str, measurements, quality_checks, export_info, config: AnalysisConfig) -> str:
+    def _save_report(self, volume_node, preset_title: str, measurements, quality_checks, ent_summary, export_info, config: AnalysisConfig) -> str:
         report_dir = ensure_report_dir(config.report_dir, REPO_ROOT)
         report_path = build_report_path(report_dir, volume_node.GetName(), preset_title)
         payload = {
@@ -256,11 +285,32 @@ class ENTAnalysisPipeline:
             "studyInfo": self._extract_study_info(volume_node),
             "measurements": measurements,
             "qualityChecks": quality_checks,
+            "entSummary": ent_summary,
             "exports": export_info,
             "impressionDraft": build_impression(preset_title, measurements),
         }
         report_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         return str(report_path)
+
+    def _save_batch_index(self, results, config: AnalysisConfig) -> str:
+        report_dir = ensure_report_dir(config.report_dir, REPO_ROOT)
+        index_path = report_dir / "batch_index.json"
+        payload = {
+            "generatedAt": __import__("datetime").datetime.now().isoformat(),
+            "count": len(results),
+            "cases": [
+                {
+                    "volumeName": result.get("volumeName"),
+                    "preset": result.get("preset"),
+                    "reportPath": result.get("reportPath"),
+                    "exportDirectory": (result.get("exportInfo") or {}).get("directory"),
+                    "qcCodes": [finding.get("code") for finding in result.get("qualityChecks", [])],
+                }
+                for result in results
+            ],
+        }
+        index_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        return str(index_path)
 
     def _extract_study_info(self, volume_node) -> Dict[str, object]:
         node_name = volume_node.GetName()
@@ -351,4 +401,7 @@ class ENTAnalysisPipeline:
 
 
 def run_ent_analysis(config: AnalysisConfig, log_callback=None) -> Dict[str, object]:
-    return ENTAnalysisPipeline(log_callback=log_callback).run(config)
+    pipeline = ENTAnalysisPipeline(log_callback=log_callback)
+    if config.batch_mode == "all":
+        return pipeline.run_batch(config)
+    return pipeline.run(config)

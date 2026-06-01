@@ -13,6 +13,8 @@ ENT Assistant v3 is a 3D Slicer helper module for ENT and head CT analysis. The 
 - Rule-based QC checks for suspicious or incomplete segmentations.
 - Export pipeline for `.seg.nrrd`, `.nii.gz` labelmaps, and optional STL surfaces.
 - AI runtime options inspired by SlicerTotalSegmentator, including `fast`, CPU mode, and `robust_crop`.
+- Batch analysis mode for processing all loaded CT volumes in one run.
+- ENT-oriented summary for airway/cavity structures and left/right asymmetry.
 - Shared core helpers for presets and report naming.
 
 ## Open-source references used
@@ -38,6 +40,15 @@ When enabled in the module UI, analysis results can be exported to:
 - `exports/<case>__<preset>/segmentation.seg.nrrd`
 - `exports/<case>__<preset>/segmentation_labelmap.nii.gz`
 - optional STL surfaces for per-segment 3D models
+
+## Batch mode
+
+The module can now analyze:
+
+- only the active volume
+- all loaded scalar volumes in the current Slicer scene
+
+Batch runs write per-case JSON reports plus `reports/batch_index.json`.
 
 ## Installing AI support
 

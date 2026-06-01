@@ -51,6 +51,12 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.presetDescription.setWordWrap(True)
         layout.addWidget(self.presetDescription)
 
+        self.batchModeCombo = qt.QComboBox()
+        self.batchModeCombo.addItems(["active", "all"])
+        batchModeForm = qt.QFormLayout()
+        batchModeForm.addRow("Batch mode", self.batchModeCombo)
+        layout.addLayout(batchModeForm)
+
         self.useTotalSegmentator = qt.QCheckBox("Use TotalSegmentator when available")
         self.useTotalSegmentator.checked = True
         layout.addWidget(self.useTotalSegmentator)
@@ -143,6 +149,7 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             module = self._load_python_module("ent_analysis_pipeline_runtime", pipeline_path)
             config = AnalysisConfig(
                 preset_key=self.getSelectedPresetKey(),
+                batch_mode=self.batchModeCombo.currentText,
                 use_totalsegmentator=self.useTotalSegmentator.checked,
                 save_report=self.saveReportCheck.checked,
                 export_results=self.exportResultsCheck.checked,
@@ -160,6 +167,11 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
 
             self.output.clear()
             result = module.run_ent_analysis(config, log_callback=self.appendOutput)
+            if "cases" in result:
+                self.appendOutput(f"Batch completed: {result['count']} volumes")
+                if result.get("batchIndexPath"):
+                    self.appendOutput(f"Batch index: {result['batchIndexPath']}")
+                return
             self.appendOutput("")
             self.appendOutput(f"Completed preset: {result['preset']}")
             if result.get("reportPath"):

@@ -2,6 +2,7 @@ import pathlib
 import unittest
 
 from ENT_Module.ent_assistant_core import (
+    build_ent_summary,
     build_impression,
     build_quality_checks,
     build_report_path,
@@ -61,6 +62,20 @@ class EntAssistantCoreTests(unittest.TestCase):
         codes = {finding["code"] for finding in findings}
         self.assertIn("very_small_segment", codes)
         self.assertIn("left_right_asymmetry", codes)
+
+    def test_build_ent_summary(self):
+        preset = get_preset("head_neck_ai")
+        summary = build_ent_summary(
+            preset,
+            [
+                {"segment": "nasal_cavity_left", "volume_ml": 10.0, "voxel_count": 100},
+                {"segment": "nasal_cavity_right", "volume_ml": 4.0, "voxel_count": 80},
+                {"segment": "oropharynx", "volume_ml": 7.5, "voxel_count": 50},
+            ],
+        )
+        self.assertIn("summaryText", summary)
+        self.assertTrue(summary["airwayOrCavitySegments"])
+        self.assertTrue(summary["strongestAsymmetry"])
 
 
 if __name__ == "__main__":

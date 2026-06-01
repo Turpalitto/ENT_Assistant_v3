@@ -34,6 +34,7 @@ class AnalysisConfig:
     use_totalsegmentator: bool = True
     save_report: bool = True
     report_dir: Optional[str] = None
+    batch_mode: str = "active"
     export_results: bool = True
     export_seg_nrrd: bool = True
     export_labelmap_nifti: bool = True
@@ -157,6 +158,70 @@ def build_impression(preset_title: str, measurements: Iterable[Dict[str, object]
     lead = rows[:3]
     segment_summary = ", ".join(f"{row['segment']} {row['volume_ml']:.2f} mL" for row in lead)
     return f"{preset_title}: dominant segmented structures -> {segment_summary}."
+
+
+def build_ent_summary(preset: AnalysisPreset, measurements: Iterable[Dict[str, object]]) -> Dict[str, object]:
+    rows = list(measurements)
+    measurement_by_name = {str(row.get("segment", "")): row for row in rows}
+    air_like_segments = []
+    for row in rows:
+        name = str(row.get("segment", "")).lower()
+        if "air" in name or "sinus" in name or "nasal_cavity" in name or "pharynx" in name:
+            air_like_segments.append(row)
+
+    top_airway = sorted(air_like_segments, key=lambda row: float(row.get("volume_ml", 0.0)), reverse=True)[:5]
+    asymmetry = []
+    for left_name, left_row in measurement_by_name.items():
+        if not left_name.endswith("_left"):
+            continue
+        right_name = left_name[: -len("_left")] + "_right"
+        if right_name not in measurement_by_name:
+            continue
+        left_volume = float(left_row.get("volume_ml", 0.0))
+        right_volume = float(measurement_by_name[right_name].get("volume_ml", 0.0))
+        smaller = min(left_volume, right_volume)
+        if smaller <= 0:
+            continue
+        ratio = max(left_volume, right_volume) / smaller
+        asymmetry.append(
+            {
+                "pair": [left_name, right_name],
+                "ratio": round(ratio, 2),
+                "leftVolumeMl": round(left_volume, 2),
+                "rightVolumeMl": round(right_volume, 2),
+            }
+        )
+
+    asymmetry.sort(key=lambda row: row["ratio"], reverse=True)
+    return {
+        "preset": preset.title,
+        "airwayOrCavitySegments": [
+            {"segment": row["segment"], "volumeMl": row["volume_ml"]} for row in top_airway
+        ],
+        "strongestAsymmetry": asymmetry[:3],
+        "summaryText": build_ent_summary_text(preset.title, top_airway, asymmetry[:3]),
+    }
+
+
+def build_ent_summary_text(preset_title: str, top_airway_rows: Iterable[Dict[str, object]], asymmetry_rows: Iterable[Dict[str, object]]) -> str:
+    airway_rows = list(top_airway_rows)
+    asymmetry = list(asymmetry_rows)
+    chunks = [f"{preset_title} ENT summary:"]
+    if airway_rows:
+        chunks.append(
+            "largest airway/cavity-related segments -> "
+            + ", ".join(f"{row['segment']} {row['volume_ml']:.2f} mL" for row in airway_rows[:3])
+        )
+    else:
+        chunks.append("no airway/cavity-focused segments identified")
+    if asymmetry:
+        lead = asymmetry[0]
+        chunks.append(
+            f"top asymmetry -> {lead['pair'][0]} vs {lead['pair'][1]} ({lead['ratio']:.2f}x)"
+        )
+    else:
+        chunks.append("no measurable left/right asymmetry pairs")
+    return "; ".join(chunks) + "."
 
 
 def build_quality_checks(preset: AnalysisPreset, measurements: Iterable[Dict[str, object]]) -> List[Dict[str, object]]:
