@@ -39,6 +39,7 @@ class AnalysisConfig:
     export_seg_nrrd: bool = True
     export_labelmap_nifti: bool = True
     export_surface_models: bool = False
+    export_rtstruct: bool = False
     export_dir: Optional[str] = None
     ai_quality: str = "normal"
     use_cpu: bool = False
@@ -296,6 +297,105 @@ def build_case_comparison_text(previous_name: str, current_name: str, deltas: It
         + ", ".join(f"{row['segment']} {row['deltaVolumeMl']:+.2f} mL" for row in lead)
         + "."
     )
+
+
+def build_longitudinal_timeline(cases: Iterable[Dict[str, object]]) -> Dict[str, object]:
+    rows = list(cases)
+    grouped: Dict[str, List[Dict[str, object]]] = {}
+    for case in rows:
+        study_info = case.get("studyInfo") or {}
+        patient_id = str(study_info.get("dicomPatientId") or "unknown_patient")
+        grouped.setdefault(patient_id, []).append(case)
+
+    patient_timelines = []
+    for patient_id, patient_cases in grouped.items():
+        sorted_cases = sorted(
+            patient_cases,
+            key=lambda case: str((case.get("studyInfo") or {}).get("dicomStudyDate") or case.get("volumeName") or ""),
+        )
+        comparisons = [
+            build_case_comparison(previous_case, current_case)
+            for previous_case, current_case in zip(sorted_cases, sorted_cases[1:])
+        ]
+        patient_timelines.append(
+            {
+                "patientId": patient_id,
+                "caseCount": len(sorted_cases),
+                "studies": [
+                    {
+                        "volumeName": case.get("volumeName"),
+                        "studyDate": (case.get("studyInfo") or {}).get("dicomStudyDate"),
+                        "seriesDescription": (case.get("studyInfo") or {}).get("dicomSeriesDescription"),
+                        "reportPath": case.get("reportPath"),
+                    }
+                    for case in sorted_cases
+                ],
+                "comparisons": comparisons,
+            }
+        )
+    return {
+        "patientCount": len(patient_timelines),
+        "patients": patient_timelines,
+    }
+
+
+def build_ent_pathology_flags(measurements: Iterable[Dict[str, object]]) -> List[Dict[str, object]]:
+    rows = list(measurements)
+    by_name = {str(row.get("segment", "")): row for row in rows}
+    flags: List[Dict[str, object]] = []
+
+    def volume(name: str) -> float:
+        return float(by_name.get(name, {}).get("volume_ml", 0.0))
+
+    nasal_left = volume("nasal_cavity_left")
+    nasal_right = volume("nasal_cavity_right")
+    if nasal_left > 0 and nasal_right > 0:
+        ratio = max(nasal_left, nasal_right) / min(nasal_left, nasal_right)
+        if ratio >= 2.0:
+            flags.append(
+                {
+                    "code": "entorhino_nasal_passage_asymmetry",
+                    "message": f"Nasal cavity asymmetry is elevated ({ratio:.2f}x).",
+                }
+            )
+
+    sinus_total = sum(
+        volume(name)
+        for name in [
+            "sinus_maxillary",
+            "sinus_frontal",
+            "sinus_sphenoid",
+            "sinus_ethmoid",
+        ]
+    )
+    if 0 < sinus_total < 2.0:
+        flags.append(
+            {
+                "code": "entorhino_low_sinus_aeration",
+                "message": f"Combined sinus aeration volume appears low ({sinus_total:.2f} mL).",
+            }
+        )
+
+    larynx_air = volume("larynx_air")
+    if 0 < larynx_air < 1.5:
+        flags.append(
+            {
+                "code": "larynx_low_air_column",
+                "message": f"Laryngeal air column volume appears reduced ({larynx_air:.2f} mL).",
+            }
+        )
+
+    oro = volume("oropharynx")
+    hypo = volume("hypopharynx")
+    if oro > 0 and hypo > 0 and max(oro, hypo) / min(oro, hypo) >= 2.5:
+        flags.append(
+            {
+                "code": "pharyngeal_airway_disproportion",
+                "message": "Marked oropharynx/hypopharynx disproportion detected.",
+            }
+        )
+
+    return flags
 
 
 def build_quality_checks(preset: AnalysisPreset, measurements: Iterable[Dict[str, object]]) -> List[Dict[str, object]]:

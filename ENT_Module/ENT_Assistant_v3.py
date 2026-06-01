@@ -81,6 +81,10 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.exportSurfaceCheck.checked = False
         layout.addWidget(self.exportSurfaceCheck)
 
+        self.exportRtstructCheck = qt.QCheckBox("RTSTRUCT readiness / safe export layer")
+        self.exportRtstructCheck.checked = False
+        layout.addWidget(self.exportRtstructCheck)
+
         self.aiOptionsForm = qt.QFormLayout()
         self.aiQualityCombo = qt.QComboBox()
         self.aiQualityCombo.addItems(["normal", "fast"])
@@ -156,6 +160,7 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                 export_seg_nrrd=self.exportSegNrrdCheck.checked,
                 export_labelmap_nifti=self.exportLabelmapCheck.checked,
                 export_surface_models=self.exportSurfaceCheck.checked,
+                export_rtstruct=self.exportRtstructCheck.checked,
                 ai_quality=self.aiQualityCombo.currentText,
                 use_cpu=self.useCpuCheck.checked,
                 robust_crop=self.robustCropCheck.checked,
@@ -175,6 +180,8 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                     self.appendOutput(f"Batch CSV: {result['batchCsvPath']}")
                 if result.get("comparisonIndexPath"):
                     self.appendOutput(f"Comparison index: {result['comparisonIndexPath']}")
+                if result.get("timelinePath"):
+                    self.appendOutput(f"Timeline index: {result['timelinePath']}")
                 for comparison in result.get("comparisons", [])[:2]:
                     self.appendOutput(comparison.get("summaryText", ""))
                 return
@@ -185,6 +192,9 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             export_info = result.get("exportInfo")
             if export_info:
                 self.appendOutput(f"Export directory: {export_info.get('directory')}")
+            rtstruct_readiness = result.get("rtstructReadiness")
+            if rtstruct_readiness:
+                self.appendOutput(f"RTSTRUCT ready: {rtstruct_readiness.get('ready')}")
         except Exception as error:
             self.output.setText(f"Pipeline error:\n{error}")
 

@@ -19,6 +19,9 @@ ENT Assistant v3 is a 3D Slicer helper module for ENT and head CT analysis. The 
 - Heuristic ENT flags for possible reduced aeration and notable nasal asymmetry.
 - Pairwise follow-up comparison between sequential or first-two loaded studies.
 - DICOM-oriented study metadata export when volumes come from Slicer DICOM loading.
+- Auto-grouped longitudinal timeline by `PatientID + StudyDate`.
+- RTSTRUCT readiness layer for SlicerRT-aware environments.
+- Narrower ENT pathology-oriented rules for sinus aeration, nasal passages, laryngeal air column and pharyngeal disproportion.
 - Shared core helpers for presets and report naming.
 
 ## Open-source references used
@@ -56,6 +59,7 @@ The module can now analyze:
 Batch runs write per-case JSON reports plus `reports/batch_index.json`.
 They also write `reports/batch_registry.csv` for quick review in Excel/Sheets.
 If at least two cases are processed, they also write `reports/comparison_index.json`.
+Longitudinal runs also write `reports/longitudinal_timeline.json`.
 
 ## Heuristic flags
 
@@ -71,6 +75,16 @@ These are screening-style computational hints only, not clinical conclusions.
 When a volume was loaded from the Slicer DICOM database, the report can include patient/study/series metadata fields already available in the local DICOM index.
 
 Comparison mode summarizes overlapping segment deltas between consecutive cases in batch mode or between the first two loaded studies in `compare_first_two`.
+
+## RTSTRUCT readiness
+
+The module now checks whether the current 3D Slicer environment looks ready for RTSTRUCT export:
+
+- SlicerRT-related module detected
+- Slicer DICOM database available
+- volume loaded with DICOM instance UIDs
+
+The current implementation is intentionally conservative: it reports readiness and only performs safe export attempts that are known to be supported by the current session.
 
 ## Installing AI support
 

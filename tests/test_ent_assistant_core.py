@@ -3,7 +3,9 @@ import unittest
 
 from ENT_Module.ent_assistant_core import (
     build_case_comparison,
+    build_ent_pathology_flags,
     build_ent_summary,
+    build_longitudinal_timeline,
     build_impression,
     build_quality_checks,
     build_report_path,
@@ -87,6 +89,28 @@ class EntAssistantCoreTests(unittest.TestCase):
         self.assertEqual(comparison["previousCase"], "study_a")
         self.assertEqual(comparison["currentCase"], "study_b")
         self.assertTrue(comparison["segmentDeltas"])
+
+    def test_build_longitudinal_timeline(self):
+        timeline = build_longitudinal_timeline(
+            [
+                {"volumeName": "a", "studyInfo": {"dicomPatientId": "p1", "dicomStudyDate": "20240101"}, "measurements": []},
+                {"volumeName": "b", "studyInfo": {"dicomPatientId": "p1", "dicomStudyDate": "20240201"}, "measurements": []},
+            ]
+        )
+        self.assertEqual(timeline["patientCount"], 1)
+        self.assertEqual(timeline["patients"][0]["caseCount"], 2)
+
+    def test_build_ent_pathology_flags(self):
+        flags = build_ent_pathology_flags(
+            [
+                {"segment": "nasal_cavity_left", "volume_ml": 6.0},
+                {"segment": "nasal_cavity_right", "volume_ml": 2.0},
+                {"segment": "larynx_air", "volume_ml": 1.0},
+            ]
+        )
+        codes = {flag["code"] for flag in flags}
+        self.assertIn("entorhino_nasal_passage_asymmetry", codes)
+        self.assertIn("larynx_low_air_column", codes)
 
 
 if __name__ == "__main__":

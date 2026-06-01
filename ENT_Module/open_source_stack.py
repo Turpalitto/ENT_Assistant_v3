@@ -43,6 +43,13 @@ OPEN_SOURCE_COMPONENTS = [
         "source": "https://github.com/coendevente/SlicerNNInteractive",
     },
     {
+        "name": "SlicerRT",
+        "type": "module",
+        "check": lambda: hasattr(slicer.modules, "dicomrtimportexport") or hasattr(slicer.modules, "beams"),
+        "purpose": "DICOM RT import/export and contour analysis toolkit for 3D Slicer.",
+        "source": "https://github.com/SlicerRt/SlicerRT",
+    },
+    {
         "name": "CloudSegmentatorResults reference",
         "type": "reference",
         "check": lambda: True,
@@ -81,5 +88,6 @@ def inspect_open_source_stack() -> Dict[str, object]:
     lines.append("- SegmentEditorExtraEffects for local refinement in Slicer")
     lines.append("- MONAI Label or SlicerNNInteractive for interactive annotation workflows")
     lines.append("- Slicer export workflow for .seg.nrrd, labelmaps and surface models")
+    lines.append("- SlicerRT for DICOM RT readiness and contour comparison/export workflows")
 
     return {"components": rows, "summary": "\n".join(lines)}

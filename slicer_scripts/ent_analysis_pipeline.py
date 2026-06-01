@@ -21,7 +21,9 @@ if REPO_ROOT not in sys.path:
 from ENT_Module.ent_assistant_core import (
     AnalysisConfig,
     build_case_comparison,
+    build_ent_pathology_flags,
     build_ent_summary,
+    build_longitudinal_timeline,
     build_report_path,
     build_impression,
     build_quality_checks,
@@ -54,12 +56,16 @@ class ENTAnalysisPipeline:
         batch_csv = self._save_batch_csv(results, config) if results and config.save_report else None
         comparisons = self._build_batch_comparisons(results)
         comparison_index = self._save_comparison_index(comparisons, config) if comparisons and config.save_report else None
+        longitudinal_timeline = build_longitudinal_timeline(results)
+        timeline_path = self._save_longitudinal_timeline(longitudinal_timeline, config) if results and config.save_report else None
         if batch_export:
             self.log(f"Batch index saved: {batch_export}")
         if batch_csv:
             self.log(f"Batch CSV saved: {batch_csv}")
         if comparison_index:
             self.log(f"Comparison index saved: {comparison_index}")
+        if timeline_path:
+            self.log(f"Timeline index saved: {timeline_path}")
         return {
             "mode": config.batch_mode,
             "count": len(results),
@@ -68,6 +74,8 @@ class ENTAnalysisPipeline:
             "batchCsvPath": batch_csv,
             "comparisons": comparisons,
             "comparisonIndexPath": comparison_index,
+            "timelinePath": timeline_path,
+            "longitudinalTimeline": longitudinal_timeline,
         }
 
     def _run_for_volume(self, volume_node, config: AnalysisConfig) -> Dict[str, object]:
@@ -88,6 +96,8 @@ class ENTAnalysisPipeline:
         measurements = self._compute_measurements(segmentation_node, volume_node)
         quality_checks = build_quality_checks(preset, measurements)
         ent_summary = build_ent_summary(preset, measurements)
+        pathology_flags = build_ent_pathology_flags(measurements)
+        rtstruct_readiness = self._check_rtstruct_readiness(volume_node)
         export_info = None
         if config.export_results:
             export_info = self._export_results(segmentation_node, volume_node, preset, config)
@@ -101,6 +111,8 @@ class ENTAnalysisPipeline:
         self.log(summary)
         self.log(self._format_quality_summary(quality_checks))
         self.log(ent_summary["summaryText"])
+        if pathology_flags:
+            self.log(self._format_pathology_flags(pathology_flags))
         return {
             "volumeName": volume_node.GetName(),
             "studyInfo": self._extract_study_info(volume_node),
@@ -109,6 +121,8 @@ class ENTAnalysisPipeline:
             "measurements": measurements,
             "qualityChecks": quality_checks,
             "entSummary": ent_summary,
+            "pathologyFlags": pathology_flags,
+            "rtstructReadiness": rtstruct_readiness,
             "exportInfo": export_info,
             "reportPath": report_path,
             "summary": summary,
@@ -295,6 +309,8 @@ class ENTAnalysisPipeline:
     def _save_report(self, volume_node, preset_title: str, measurements, quality_checks, ent_summary, export_info, config: AnalysisConfig) -> str:
         report_dir = ensure_report_dir(config.report_dir, REPO_ROOT)
         report_path = build_report_path(report_dir, volume_node.GetName(), preset_title)
+        pathology_flags = build_ent_pathology_flags(measurements)
+        rtstruct_readiness = self._check_rtstruct_readiness(volume_node)
         payload = {
             "volumeName": volume_node.GetName(),
             "preset": preset_title,
@@ -303,6 +319,8 @@ class ENTAnalysisPipeline:
             "measurements": measurements,
             "qualityChecks": quality_checks,
             "entSummary": ent_summary,
+            "pathologyFlags": pathology_flags,
+            "rtstructReadiness": rtstruct_readiness,
             "exports": export_info,
             "impressionDraft": build_impression(preset_title, measurements),
         }
@@ -348,6 +366,8 @@ class ENTAnalysisPipeline:
                     "qcCodes",
                     "dicomStudyDate",
                     "dicomSeriesDescription",
+                    "pathologyFlags",
+                    "rtstructReady",
                 ],
             )
             writer.writeheader()
@@ -372,6 +392,8 @@ class ENTAnalysisPipeline:
                         "qcCodes": " | ".join(finding.get("code", "") for finding in result.get("qualityChecks", [])),
                         "dicomStudyDate": (result.get("studyInfo") or {}).get("dicomStudyDate"),
                         "dicomSeriesDescription": (result.get("studyInfo") or {}).get("dicomSeriesDescription"),
+                        "pathologyFlags": " | ".join(flag.get("code", "") for flag in result.get("pathologyFlags", [])),
+                        "rtstructReady": (result.get("rtstructReadiness") or {}).get("ready"),
                     }
                 )
         return str(csv_path)
@@ -425,6 +447,13 @@ class ENTAnalysisPipeline:
         path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         return str(path)
 
+    def _save_longitudinal_timeline(self, timeline, config: AnalysisConfig) -> str:
+        report_dir = ensure_report_dir(config.report_dir, REPO_ROOT)
+        path = report_dir / "longitudinal_timeline.json"
+        payload = {"generatedAt": __import__("datetime").datetime.now().isoformat(), "timeline": timeline}
+        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        return str(path)
+
     def _format_quality_summary(self, quality_checks) -> str:
         if not quality_checks:
             return "QC: no findings."
@@ -434,6 +463,32 @@ class ENTAnalysisPipeline:
             message = str(finding.get("message", ""))
             lines.append(f"- {level}: {message}")
         return "\n".join(lines)
+
+    def _format_pathology_flags(self, pathology_flags) -> str:
+        lines = ["ENT pathology-oriented flags:"]
+        for flag in pathology_flags:
+            lines.append(f"- {flag.get('code')}: {flag.get('message')}")
+        return "\n".join(lines)
+
+    def _check_rtstruct_readiness(self, volume_node) -> Dict[str, object]:
+        module_available = hasattr(slicer.modules, "dicomrtimportexport") or hasattr(slicer.modules, "beams")
+        dicom_database_available = bool(getattr(slicer, "dicomDatabase", None))
+        dicom_instance_uids = bool(volume_node.GetAttribute("DICOM.instanceUIDs"))
+        ready = module_available and dicom_database_available and dicom_instance_uids
+        reasons = []
+        if not module_available:
+            reasons.append("SlicerRT export module not detected.")
+        if not dicom_database_available:
+            reasons.append("Slicer DICOM database is not available.")
+        if not dicom_instance_uids:
+            reasons.append("Volume was not loaded with DICOM instance UIDs.")
+        return {
+            "ready": ready,
+            "moduleAvailable": module_available,
+            "dicomDatabaseAvailable": dicom_database_available,
+            "hasDicomInstanceUids": dicom_instance_uids,
+            "notes": reasons or ["Environment looks ready for RTSTRUCT export attempts."],
+        }
 
     def _export_results(self, segmentation_node, volume_node, preset, config: AnalysisConfig) -> Dict[str, object]:
         export_dir = ensure_export_dir(config.export_dir, REPO_ROOT)
@@ -488,6 +543,18 @@ class ENTAnalysisPipeline:
                 export_info["files"].append(str(case_dir / "*.stl"))
             except Exception as error:
                 export_info.setdefault("warnings", []).append(f"surface export failed: {error}")
+
+        if config.export_rtstruct:
+            readiness = self._check_rtstruct_readiness(volume_node)
+            export_info["rtstructReadiness"] = readiness
+            if readiness.get("ready"):
+                export_info.setdefault("warnings", []).append(
+                    "RTSTRUCT environment detected, but automatic scripted export is not executed unless a verified SlicerRT export API is available in-session."
+                )
+            else:
+                export_info.setdefault("warnings", []).append(
+                    "RTSTRUCT export skipped because readiness checks did not pass."
+                )
 
         return export_info
 
