@@ -17,6 +17,7 @@ This repository now uses or aligns with the following open-source projects:
 - [MONAI Label](https://github.com/Project-MONAI/MONAILabel)
 - [SlicerNNInteractive](https://github.com/coendevente/SlicerNNInteractive)
 - [Raidionics-Slicer](https://github.com/raidionics/Raidionics-Slicer)
+- [CloudSegmentatorResults](https://github.com/ImagingDataCommons/CloudSegmentatorResults)
 
 ## Why these matter
 
@@ -24,3 +25,4 @@ This repository now uses or aligns with the following open-source projects:
 - `SegmentEditorExtraEffects` is useful when the automatic result needs ENT-specific cleanup around narrow airways or sinus borders.
 - `MONAI Label` and `SlicerNNInteractive` are good next steps if this project evolves into interactive annotation or dataset-building workflows for ENT/head pathology.
 - `Raidionics-Slicer` is a useful open-source reference for standardized report generation patterns inside 3D Slicer.
+- `CloudSegmentatorResults` is a useful open-source reference for rule-based segmentation QC, especially volume sanity checks and suspicious-output filtering.

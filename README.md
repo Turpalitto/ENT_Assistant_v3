@@ -10,6 +10,7 @@ ENT Assistant v3 is a 3D Slicer helper module for ENT and head CT analysis. The 
 - Fallback threshold-based segmentation for bone, air, and soft tissue.
 - Volume measurement report export to `reports/*.json`.
 - Structured report draft inspired by open-source clinical reporting workflows.
+- Rule-based QC checks for suspicious or incomplete segmentations.
 - Shared core helpers for presets and report naming.
 
 ## Open-source references used
@@ -17,6 +18,7 @@ ENT Assistant v3 is a 3D Slicer helper module for ENT and head CT analysis. The 
 - [TotalSegmentator](https://github.com/wasserth/totalsegmentator)
 - [SlicerSegmentEditorExtraEffects](https://github.com/lassoan/SlicerSegmentEditorExtraEffects)
 - [Raidionics-Slicer](https://github.com/raidionics/Raidionics-Slicer)
+- [CloudSegmentatorResults](https://github.com/ImagingDataCommons/CloudSegmentatorResults)
 
 The current presets use the public TotalSegmentator tasks `head_glands_cavities`, `headneck_bones_vessels`, and `craniofacial_structures`, which are directly relevant to ENT and head CT workflows.
 

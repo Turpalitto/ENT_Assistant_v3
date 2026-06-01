@@ -21,6 +21,7 @@ from ENT_Module.ent_assistant_core import (
     AnalysisConfig,
     build_report_path,
     build_impression,
+    build_quality_checks,
     ensure_report_dir,
     get_preset,
     summarize_measurements,
@@ -51,17 +52,20 @@ class ENTAnalysisPipeline:
             segmentation_node = self._run_threshold_segmentation(volume_node, config)
 
         measurements = self._compute_measurements(segmentation_node, volume_node)
+        quality_checks = build_quality_checks(preset, measurements)
         report_path = None
         if config.save_report:
-            report_path = self._save_report(volume_node, preset.title, measurements, config)
+            report_path = self._save_report(volume_node, preset.title, measurements, quality_checks, config)
             self.log(f"Report saved: {report_path}")
 
         summary = summarize_measurements(measurements)
         self.log(summary)
+        self.log(self._format_quality_summary(quality_checks))
         return {
             "preset": preset.title,
             "segmentationNodeName": segmentation_node.GetName(),
             "measurements": measurements,
+            "qualityChecks": quality_checks,
             "reportPath": report_path,
             "summary": summary,
         }
@@ -229,18 +233,40 @@ class ENTAnalysisPipeline:
             )
         return results
 
-    def _save_report(self, volume_node, preset_title: str, measurements, config: AnalysisConfig) -> str:
+    def _save_report(self, volume_node, preset_title: str, measurements, quality_checks, config: AnalysisConfig) -> str:
         report_dir = ensure_report_dir(config.report_dir, REPO_ROOT)
         report_path = build_report_path(report_dir, volume_node.GetName(), preset_title)
         payload = {
             "volumeName": volume_node.GetName(),
             "preset": preset_title,
             "generatedAt": __import__("datetime").datetime.now().isoformat(),
+            "studyInfo": self._extract_study_info(volume_node),
             "measurements": measurements,
+            "qualityChecks": quality_checks,
             "impressionDraft": build_impression(preset_title, measurements),
         }
         report_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         return str(report_path)
+
+    def _extract_study_info(self, volume_node) -> Dict[str, object]:
+        node_name = volume_node.GetName()
+        spacing = [round(value, 4) for value in volume_node.GetSpacing()]
+        dimensions = list(volume_node.GetImageData().GetDimensions()) if volume_node.GetImageData() else None
+        return {
+            "volumeName": node_name,
+            "spacingMm": spacing,
+            "dimensionsVoxels": dimensions,
+        }
+
+    def _format_quality_summary(self, quality_checks) -> str:
+        if not quality_checks:
+            return "QC: no findings."
+        lines = ["QC summary:"]
+        for finding in quality_checks:
+            level = str(finding.get("level", "info")).upper()
+            message = str(finding.get("message", ""))
+            lines.append(f"- {level}: {message}")
+        return "\n".join(lines)
 
 
 def run_ent_analysis(config: AnalysisConfig, log_callback=None) -> Dict[str, object]:

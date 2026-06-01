@@ -1,7 +1,14 @@
 import pathlib
 import unittest
 
-from ENT_Module.ent_assistant_core import build_impression, build_report_path, get_preset, sanitize_filename, summarize_measurements
+from ENT_Module.ent_assistant_core import (
+    build_impression,
+    build_quality_checks,
+    build_report_path,
+    get_preset,
+    sanitize_filename,
+    summarize_measurements,
+)
 
 
 class EntAssistantCoreTests(unittest.TestCase):
@@ -35,6 +42,20 @@ class EntAssistantCoreTests(unittest.TestCase):
         )
         self.assertIn("Head & neck AI preset", impression)
         self.assertIn("Bone 12.50 mL", impression)
+
+    def test_build_quality_checks_detects_small_and_asymmetry(self):
+        preset = get_preset("head_neck_ai")
+        findings = build_quality_checks(
+            preset,
+            [
+                {"segment": "parotid_gland_left", "volume_ml": 9.0, "voxel_count": 100},
+                {"segment": "parotid_gland_right", "volume_ml": 2.0, "voxel_count": 50},
+                {"segment": "nasopharynx", "volume_ml": 0.05, "voxel_count": 1},
+            ],
+        )
+        codes = {finding["code"] for finding in findings}
+        self.assertIn("very_small_segment", codes)
+        self.assertIn("left_right_asymmetry", codes)
 
 
 if __name__ == "__main__":

@@ -42,6 +42,13 @@ OPEN_SOURCE_COMPONENTS = [
         "purpose": "Prompt-based interactive segmentation with points, boxes and scribbles.",
         "source": "https://github.com/coendevente/SlicerNNInteractive",
     },
+    {
+        "name": "CloudSegmentatorResults reference",
+        "type": "reference",
+        "check": lambda: True,
+        "purpose": "Rule-based QC inspiration for suspicious AI segmentation outputs and volumetric sanity checks.",
+        "source": "https://github.com/ImagingDataCommons/CloudSegmentatorResults",
+    },
 ]
 
 
