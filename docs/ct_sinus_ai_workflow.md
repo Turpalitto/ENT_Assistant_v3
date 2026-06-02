@@ -57,6 +57,29 @@ The Slicer module now exposes three immediate visualization helpers:
 
 These are not just cosmetic views. They are intended to make preoperative review faster inside the same Slicer workflow.
 
+## Report modes
+
+The workflow now supports three immediate report modes without rerunning segmentation:
+
+- `assistant`
+  - balanced AI-assisted ENT summary
+- `radiology`
+  - conservative imaging wording
+- `surgeon`
+  - emphasizes FESS corridor, drainage pathways, and pre-op relevance
+
+After a segmentation is already available, the module can regenerate the report text through `Recompute last report from segmentation`.
+
+## Export
+
+Current report export options include:
+
+- JSON report
+- HTML report
+- batch CSV registry
+
+The HTML export is designed as a practical handoff artifact for review outside Slicer.
+
 ## What still needs a trained model
 
 The following are architected for, but still benefit from a dedicated sinus model and labeled data:

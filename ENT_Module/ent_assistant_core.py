@@ -34,6 +34,9 @@ class AnalysisConfig:
     use_totalsegmentator: bool = True
     save_report: bool = True
     report_dir: Optional[str] = None
+    report_mode: str = "assistant"
+    export_html_report: bool = True
+    generate_preop_checklist: bool = True
     batch_mode: str = "active"
     export_results: bool = True
     export_seg_nrrd: bool = True

@@ -29,6 +29,8 @@ The newest workflow also targets `AI-assisted CT sinus reporting` for paranasal 
 - Draft radiology report sections: `Description`, `Impression`, and `Recommendations for ENT`.
 - Findings table in the Slicer UI for sinus findings, OMC status, and anatomic variants.
 - 3D visualization helpers for sinus-focused, internal-head, and FESS-planning views.
+- Report-mode switcher: `assistant`, `radiology`, `surgeon`.
+- HTML report export and recompute-from-segmentation workflow.
 - Shared core helpers for presets and report naming.
 
 ## Open-source references used
@@ -73,6 +75,17 @@ After analysis, the module can also prepare three built-in 3D visualization mode
 - `FESS planning view`
 
 These views use volume rendering plus styled segment colors/opacities to better expose bone, internal sinus cavities, nasal cavity, septum, and OMC-related structures in the 3D window.
+
+The module now also supports:
+
+- `report mode = assistant`
+  - balanced ENT support summary
+- `report mode = radiology`
+  - more conservative imaging-style summary
+- `report mode = surgeon`
+  - emphasizes drainage pathways and FESS-relevant anatomy
+
+You can switch report mode and then use `Recompute last report from segmentation` to regenerate the report without rerunning AI segmentation.
 
 This is intentionally template-driven and conservative. The current implementation favors reproducible wording over free-form generative text.
 

@@ -53,6 +53,7 @@ from ENT_Module.ent_assistant_core import (
     summarize_measurements,
 )
 from ENT_Module.sinus_reporting import build_ct_sinus_report
+from ENT_Module.report_export import write_html_report
 
 
 class ENTAnalysisPipeline:
@@ -136,7 +137,16 @@ class ENTAnalysisPipeline:
         quality_checks = build_quality_checks(preset, measurements)
         ent_summary = build_ent_summary(preset, measurements)
         pathology_flags = build_ent_pathology_flags(measurements)
-        sinus_report = build_ct_sinus_report(measurements, study_info) if config.preset_key == "sinus_ct_ai" else None
+        sinus_report = (
+            build_ct_sinus_report(
+                measurements,
+                study_info,
+                report_mode=config.report_mode,
+                include_checklist=config.generate_preop_checklist,
+            )
+            if config.preset_key == "sinus_ct_ai"
+            else None
+        )
         rtstruct_readiness = self._check_rtstruct_readiness(volume_node)
         export_info = None
         if config.export_results:
@@ -181,7 +191,59 @@ class ENTAnalysisPipeline:
             "rtstructReadiness": rtstruct_readiness,
             "exportInfo": export_info,
             "reportPath": report_path,
+            "htmlReportPath": str(Path(report_path).with_suffix(".html")) if report_path and config.export_html_report else None,
             "summary": summary,
+        }
+
+    def recompute_existing(self, volume_node, segmentation_node, config: AnalysisConfig) -> Dict[str, object]:
+        preset = get_preset(config.preset_key)
+        study_info = self._extract_study_info(volume_node)
+        measurements = self._compute_measurements(segmentation_node, volume_node)
+        quality_checks = build_quality_checks(preset, measurements)
+        ent_summary = build_ent_summary(preset, measurements)
+        pathology_flags = build_ent_pathology_flags(measurements)
+        sinus_report = (
+            build_ct_sinus_report(
+                measurements,
+                study_info,
+                report_mode=config.report_mode,
+                include_checklist=config.generate_preop_checklist,
+            )
+            if config.preset_key == "sinus_ct_ai"
+            else None
+        )
+        export_info = None
+        report_path = None
+        if config.save_report:
+            report_path = self._save_report(
+                volume_node,
+                preset.title,
+                measurements,
+                quality_checks,
+                ent_summary,
+                export_info,
+                config,
+                study_info=study_info,
+                sinus_report=sinus_report,
+            )
+            self.log(f"Recomputed report saved: {report_path}")
+        return {
+            "volumeName": volume_node.GetName(),
+            "volumeNodeId": volume_node.GetID(),
+            "studyInfo": study_info,
+            "preset": preset.title,
+            "segmentationNodeName": segmentation_node.GetName(),
+            "segmentationNodeId": segmentation_node.GetID(),
+            "measurements": measurements,
+            "qualityChecks": quality_checks,
+            "entSummary": ent_summary,
+            "pathologyFlags": pathology_flags,
+            "sinusReport": sinus_report,
+            "rtstructReadiness": self._check_rtstruct_readiness(volume_node),
+            "exportInfo": export_info,
+            "reportPath": report_path,
+            "htmlReportPath": str(Path(report_path).with_suffix(".html")) if report_path and config.export_html_report else None,
+            "summary": summarize_measurements(measurements),
         }
 
     def _get_volume_nodes(self, batch_mode: str):
@@ -550,6 +612,7 @@ class ENTAnalysisPipeline:
         pathology_flags = build_ent_pathology_flags(measurements)
         rtstruct_readiness = self._check_rtstruct_readiness(volume_node)
         impression_text = sinus_report["impression"] if sinus_report else build_impression(preset_title, measurements)
+        html_report_path = None
         payload = {
             "volumeName": volume_node.GetName(),
             "preset": preset_title,
@@ -565,6 +628,10 @@ class ENTAnalysisPipeline:
             "impressionDraft": impression_text,
         }
         report_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        if config.export_html_report:
+            html_report_path = str(report_path.with_suffix(".html"))
+            payload["htmlReportPath"] = write_html_report(html_report_path, payload)
+            report_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         return str(report_path)
 
     def _save_batch_index(self, results, config: AnalysisConfig) -> str:
@@ -597,6 +664,7 @@ class ENTAnalysisPipeline:
                     "volumeName",
                     "preset",
                     "reportPath",
+                    "htmlReportPath",
                     "exportDirectory",
                     "topAirwaySegment",
                     "topAirwayVolumeMl",
@@ -627,6 +695,7 @@ class ENTAnalysisPipeline:
                         "volumeName": result.get("volumeName"),
                         "preset": result.get("preset"),
                         "reportPath": result.get("reportPath"),
+                        "htmlReportPath": result.get("htmlReportPath"),
                         "exportDirectory": (result.get("exportInfo") or {}).get("directory"),
                         "topAirwaySegment": top_airway.get("segment"),
                         "topAirwayVolumeMl": top_airway.get("volumeMl"),
@@ -961,3 +1030,12 @@ def run_ent_analysis(config: AnalysisConfig, log_callback=None) -> Dict[str, obj
     if config.batch_mode in {"all", "compare_first_two"}:
         return pipeline.run_batch(config)
     return pipeline.run(config)
+
+
+def recompute_ent_analysis(volume_node_id: str, segmentation_node_id: str, config: AnalysisConfig, log_callback=None) -> Dict[str, object]:
+    pipeline = ENTAnalysisPipeline(log_callback=log_callback)
+    volume_node = slicer.mrmlScene.GetNodeByID(volume_node_id)
+    segmentation_node = slicer.mrmlScene.GetNodeByID(segmentation_node_id)
+    if not volume_node or not segmentation_node:
+        raise RuntimeError("Volume or segmentation node for recompute was not found in the scene.")
+    return pipeline.recompute_existing(volume_node, segmentation_node, config)

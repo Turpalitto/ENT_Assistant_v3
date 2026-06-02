@@ -1,6 +1,6 @@
 import unittest
 
-from ENT_Module.sinus_reporting import build_ct_sinus_report
+from ENT_Module.sinus_reporting import build_ct_sinus_report, build_sinus_ct_suitability
 
 
 class SinusReportingTests(unittest.TestCase):
@@ -46,13 +46,15 @@ class SinusReportingTests(unittest.TestCase):
                 {"segment": "nasal_cavity_right", "volume_ml": 4.0},
                 {"segment": "nasal_cavity_left", "volume_ml": 9.0},
             ],
-            {"dicomModality": "CT"},
+            {"dicomModality": "CT", "spacingMm": [0.4, 0.4, 0.8], "dicomSeriesDescription": "PNS CT"},
         )
-        self.assertIn("риносинусита", report["impression"])
-        self.assertTrue(any("ОМК справа" in row["details"] or "справа" in row["details"] for row in report["findingRows"]))
-        self.assertTrue(any("перегородки носа" in row["details"] for row in report["findingRows"]))
+        self.assertIn("rhinosinusitis", report["impression"])
+        self.assertTrue(any("right" in row["details"].lower() for row in report["findingRows"]))
+        self.assertTrue(any("septal" in row["details"].lower() for row in report["findingRows"]))
         self.assertGreater(report["lundMackay"]["totalScore"], 0)
         self.assertTrue(report["surgicalPlanning"]["summaryLines"])
+        self.assertEqual(report["suitability"]["level"], "good")
+        self.assertTrue(report["preOpChecklist"])
 
     def test_build_ct_sinus_report_handles_near_normal_case(self):
         report = build_ct_sinus_report(
@@ -76,11 +78,15 @@ class SinusReportingTests(unittest.TestCase):
                     "superior_soft_fraction": 0.02,
                 },
             ],
-            {"dicomModality": "CT"},
+            {"dicomModality": "CT", "spacingMm": [0.5, 0.5, 2.5]},
         )
-        self.assertIn("не выявлено", report["impression"])
-        self.assertIn("Пневматизация", report["description"])
+        self.assertIn("No strong sinusitis pattern", report["impression"])
+        self.assertIn("aeration", report["description"].lower())
         self.assertEqual(report["lundMackay"]["totalScore"], 0)
+
+    def test_build_suitability_flags_non_ct(self):
+        suitability = build_sinus_ct_suitability({"dicomModality": "MR", "spacingMm": [0.5, 0.5, 4.0]})
+        self.assertEqual(suitability["level"], "poor")
 
 
 if __name__ == "__main__":

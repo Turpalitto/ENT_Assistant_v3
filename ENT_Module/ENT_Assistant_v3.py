@@ -57,6 +57,9 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.batchModeCombo.addItems(["active", "all", "compare_first_two"])
         batchModeForm = qt.QFormLayout()
         batchModeForm.addRow("Batch mode", self.batchModeCombo)
+        self.reportModeCombo = qt.QComboBox()
+        self.reportModeCombo.addItems(["assistant", "radiology", "surgeon"])
+        batchModeForm.addRow("Report mode", self.reportModeCombo)
         layout.addLayout(batchModeForm)
 
         self.useTotalSegmentator = qt.QCheckBox("Use TotalSegmentator when available")
@@ -66,6 +69,14 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.saveReportCheck = qt.QCheckBox("Save JSON report to repository /reports")
         self.saveReportCheck.checked = True
         layout.addWidget(self.saveReportCheck)
+
+        self.exportHtmlReportCheck = qt.QCheckBox("Export HTML report")
+        self.exportHtmlReportCheck.checked = True
+        layout.addWidget(self.exportHtmlReportCheck)
+
+        self.preopChecklistCheck = qt.QCheckBox("Generate pre-op ENT/FESS checklist")
+        self.preopChecklistCheck.checked = True
+        layout.addWidget(self.preopChecklistCheck)
 
         self.exportResultsCheck = qt.QCheckBox("Export segmentation outputs to repository /exports")
         self.exportResultsCheck.checked = True
@@ -126,6 +137,10 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.stackBtn.clicked.connect(self.checkOpenSourceStack)
         layout.addWidget(self.stackBtn)
 
+        self.recomputeBtn = qt.QPushButton("Recompute last report from segmentation")
+        self.recomputeBtn.clicked.connect(self.recomputeLastReport)
+        layout.addWidget(self.recomputeBtn)
+
         viewButtons = qt.QHBoxLayout()
         self.sinus3dBtn = qt.QPushButton("Prepare 3D sinus view")
         self.sinus3dBtn.clicked.connect(self.prepareSinus3DView)
@@ -177,6 +192,9 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                 batch_mode=self.batchModeCombo.currentText,
                 use_totalsegmentator=self.useTotalSegmentator.checked,
                 save_report=self.saveReportCheck.checked,
+                report_mode=self.reportModeCombo.currentText,
+                export_html_report=self.exportHtmlReportCheck.checked,
+                generate_preop_checklist=self.preopChecklistCheck.checked,
                 export_results=self.exportResultsCheck.checked,
                 export_seg_nrrd=self.exportSegNrrdCheck.checked,
                 export_labelmap_nifti=self.exportLabelmapCheck.checked,
@@ -217,6 +235,8 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             self.lastSegmentationNodeId = result.get("segmentationNodeId")
             if result.get("reportPath"):
                 self.appendOutput(f"Report: {result['reportPath']}")
+            if result.get("htmlReportPath"):
+                self.appendOutput(f"HTML report: {result['htmlReportPath']}")
             export_info = result.get("exportInfo")
             if export_info:
                 self.appendOutput(f"Export directory: {export_info.get('directory')}")
@@ -228,8 +248,43 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                 self.appendOutput("")
                 self.appendOutput(sinus_report.get("reportText", ""))
                 self.populateFindingsTable(sinus_report.get("findingRows") or [])
+                suitability = sinus_report.get("suitability") or {}
+                self.appendOutput(f"Suitability: {suitability.get('level')} ({suitability.get('score')})")
         except Exception as error:
             self.output.setText(f"Pipeline error:\n{error}")
+
+    def recomputeLastReport(self):
+        try:
+            if not self.lastVolumeNodeId or not self.lastSegmentationNodeId:
+                self.output.setText("Run an analysis first so there is a volume and segmentation to recompute from.")
+                return
+            pipeline_path = os.path.abspath(os.path.join(REPO_ROOT, "slicer_scripts", "ent_analysis_pipeline.py"))
+            module = self._load_python_module("ent_analysis_pipeline_runtime_recompute", pipeline_path)
+            config = AnalysisConfig(
+                preset_key=self.getSelectedPresetKey(),
+                batch_mode="active",
+                use_totalsegmentator=False,
+                save_report=self.saveReportCheck.checked,
+                report_mode=self.reportModeCombo.currentText,
+                export_html_report=self.exportHtmlReportCheck.checked,
+                generate_preop_checklist=self.preopChecklistCheck.checked,
+                export_results=False,
+                export_rtstruct=False,
+            )
+            self.output.clear()
+            result = module.recompute_ent_analysis(self.lastVolumeNodeId, self.lastSegmentationNodeId, config, log_callback=self.appendOutput)
+            self.appendOutput(f"Recomputed preset: {result['preset']}")
+            if result.get("reportPath"):
+                self.appendOutput(f"Report: {result['reportPath']}")
+            if result.get("htmlReportPath"):
+                self.appendOutput(f"HTML report: {result['htmlReportPath']}")
+            sinus_report = result.get("sinusReport")
+            if sinus_report:
+                self.populateFindingsTable(sinus_report.get("findingRows") or [])
+                self.appendOutput("")
+                self.appendOutput(sinus_report.get("reportText", ""))
+        except Exception as error:
+            self.output.setText(f"Recompute error:\n{error}")
 
     def runDevScript(self):
         try:
