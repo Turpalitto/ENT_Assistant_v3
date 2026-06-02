@@ -38,6 +38,8 @@ The project now also includes an `ENT / temporal bone MRI support` workflow for 
 - Explainability/evidence section in HTML reports based on structured finding rows.
 - One-click `Radiology` and `FESS` report buttons.
 - DICOM import helper and case-bundle export helper in the Slicer UI.
+- `AI runtime advisor` button with per-framework fit summary for the current workstation.
+- `Export AI workspace` button that writes image/label artifacts plus nnU-Net-friendly workspace layout and command templates.
 - Open-source stack check with local runtime profile for Torch, MONAI, SimpleITK, and NVIDIA GPU readiness.
 - Shared core helpers for presets and report naming.
 
@@ -109,6 +111,15 @@ The UI also now includes:
 
 The exported case bundle can include the JSON report, HTML report, screenshots, and export directory contents when available.
 For MRI, the HTML export now favors axial/coronal/sagittal slice evidence instead of CT-like 3D screenshots, to keep the viewer clinically readable.
+The `Export AI workspace` action now also prepares:
+
+- `image.nii.gz`
+- `segmentation.seg.nrrd`
+- `labelmap.nii.gz`
+- `nnunet_workspace/imagesTs/<case>_0000.nii.gz`
+- `nnunet_workspace/labelsTs/<case>.nii.gz` when labels exist
+- `nnunet_workspace/dataset.json`
+- starter `.cmd` templates for `TotalSegmentator`, `MONAI Label`, and `nnU-Net`
 
 This is intentionally template-driven and conservative. The current implementation favors reproducible wording over free-form generative text.
 

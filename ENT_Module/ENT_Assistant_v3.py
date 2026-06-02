@@ -154,6 +154,10 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.stackBtn.clicked.connect(self.checkOpenSourceStack)
         layout.addWidget(self.stackBtn)
 
+        self.runtimeAdvisorBtn = qt.QPushButton("AI runtime advisor")
+        self.runtimeAdvisorBtn.clicked.connect(self.checkAiRuntimeAdvisor)
+        layout.addWidget(self.runtimeAdvisorBtn)
+
         self.recomputeBtn = qt.QPushButton("Recompute last report from segmentation")
         self.recomputeBtn.clicked.connect(self.recomputeLastReport)
         layout.addWidget(self.recomputeBtn)
@@ -166,6 +170,12 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.exportBundleBtn.clicked.connect(self.exportCurrentCaseBundle)
         workflowButtons.addWidget(self.exportBundleBtn)
         layout.addLayout(workflowButtons)
+
+        aiWorkflowButtons = qt.QHBoxLayout()
+        self.exportAiWorkspaceBtn = qt.QPushButton("Export AI workspace")
+        self.exportAiWorkspaceBtn.clicked.connect(self.exportAiWorkspace)
+        aiWorkflowButtons.addWidget(self.exportAiWorkspaceBtn)
+        layout.addLayout(aiWorkflowButtons)
 
         viewButtons = qt.QHBoxLayout()
         self.sinus3dBtn = qt.QPushButton("Prepare 3D sinus view")
@@ -379,6 +389,23 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         except Exception as error:
             self.output.setText(f"Case bundle export error:\n{error}")
 
+    def exportAiWorkspace(self):
+        try:
+            if not self.lastResult:
+                self.output.setText("Run or recompute a case first so there is something to export into an AI workspace.")
+                return
+            folder = qt.QFileDialog.getExistingDirectory(slicer.util.mainWindow(), "Select AI workspace folder")
+            if not folder:
+                return
+            workflow_path = os.path.abspath(os.path.join(MODULE_DIR, "slicer_workflow.py"))
+            module = self._load_python_module("ent_slicer_workflow_runtime_ai_export", workflow_path)
+            result = module.export_ai_workspace(self.lastResult, folder)
+            self.appendOutput(f"AI workspace exported: {result.get('directory')}")
+            if result.get("workspaceMeta"):
+                self.appendOutput(f"AI manifest: {(result.get('workspaceMeta') or {}).get('manifestPath')}")
+        except Exception as error:
+            self.output.setText(f"AI workspace export error:\n{error}")
+
     def runDevScript(self):
         try:
             script_path = os.path.abspath(os.path.join(REPO_ROOT, "slicer_scripts", "dev.py"))
@@ -440,6 +467,15 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             self.output.setText(report["summary"])
         except Exception as error:
             self.output.setText(f"Stack check error:\n{error}")
+
+    def checkAiRuntimeAdvisor(self):
+        try:
+            advisor_path = os.path.abspath(os.path.join(MODULE_DIR, "ai_runtime_advisor.py"))
+            module = self._load_python_module("ent_ai_runtime_advisor_runtime", advisor_path)
+            report = module.inspect_local_ai_runtimes()
+            self.output.setText(report["summary"])
+        except Exception as error:
+            self.output.setText(f"AI runtime advisor error:\n{error}")
 
     def getSelectedPresetKey(self):
         return self.presetKeyByTitle.get(self.presetCombo.currentText, "ent_threshold")

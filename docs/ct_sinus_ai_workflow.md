@@ -94,6 +94,14 @@ The module now also exposes practical UI helpers for day-to-day use:
 - `Export current case bundle`
 
 The case-bundle export is designed for a concrete local Slicer workflow: analyze a study, review the 3D scene, then export a compact package containing report artifacts and related outputs.
+The newer `Export AI workspace` path goes further and prepares a local handoff bundle for external AI runtimes:
+
+- direct `image.nii.gz` export
+- optional `segmentation.seg.nrrd`
+- optional `labelmap.nii.gz`
+- `nnunet_workspace/imagesTs` and `labelsTs`
+- a starter `dataset.json`
+- example `.cmd` launchers for `TotalSegmentator`, `MONAI Label`, and `nnU-Net`
 
 ## MRI support note
 
