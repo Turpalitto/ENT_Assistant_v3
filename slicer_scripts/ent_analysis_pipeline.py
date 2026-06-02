@@ -66,11 +66,11 @@ class ENTAnalysisPipeline:
         self.log_callback(message)
 
     def run(self, config: AnalysisConfig) -> Dict[str, object]:
-        volume_node = self._get_active_volume()
+        volume_node = self._get_active_volume(config)
         return self._run_for_volume(volume_node, config)
 
     def run_batch(self, config: AnalysisConfig) -> Dict[str, object]:
-        volume_nodes = self._get_volume_nodes(config.batch_mode)
+        volume_nodes = self._get_volume_nodes(config.batch_mode, config)
         results = []
         for index, volume_node in enumerate(volume_nodes, start=1):
             self.log(f"[{index}/{len(volume_nodes)}] Processing volume: {volume_node.GetName()}")
@@ -275,7 +275,7 @@ class ENTAnalysisPipeline:
             "summary": summarize_measurements(measurements),
         }
 
-    def _get_volume_nodes(self, batch_mode: str):
+    def _get_volume_nodes(self, batch_mode: str, config: Optional[AnalysisConfig] = None):
         volumes = slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode")
         if not volumes:
             raise RuntimeError("No loaded scalar volume was found in the scene.")
@@ -285,14 +285,112 @@ class ENTAnalysisPipeline:
             if len(volumes) < 2:
                 raise RuntimeError("Comparison mode requires at least two loaded scalar volumes.")
             return list(volumes)[:2]
-        return [volumes[0]]
+        if config:
+            return [self._get_active_volume(config)]
+        return [list(volumes)[0]]
 
-    def _get_active_volume(self):
-        volume_node = self._get_volume_nodes("active")[0]
+    def _get_active_volume(self, config: AnalysisConfig):
+        volume_node = self._resolve_current_displayed_volume() or self._resolve_selection_volume()
+        if volume_node and not self._should_avoid_volume(volume_node, config):
+            self._set_active_volume(volume_node)
+            return volume_node
+
+        preferred = self._select_best_volume_for_config(config)
+        if preferred:
+            self.log(f"Using preferred volume instead of unsuitable active series: {preferred.GetName()}")
+            self._set_active_volume(preferred)
+            return preferred
+
+        volumes = slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode")
+        if not volumes:
+            raise RuntimeError("No loaded scalar volume was found in the scene.")
+        volume_node = list(volumes)[0]
+        self._set_active_volume(volume_node)
+        return volume_node
+
+    def _set_active_volume(self, volume_node):
         selection_node = slicer.app.applicationLogic().GetSelectionNode()
         selection_node.SetReferenceActiveVolumeID(volume_node.GetID())
         slicer.app.applicationLogic().PropagateVolumeSelection()
         return volume_node
+
+    def _resolve_current_displayed_volume(self):
+        try:
+            layout_manager = slicer.app.layoutManager()
+            if not layout_manager:
+                return None
+            red_widget = layout_manager.sliceWidget("Red")
+            if not red_widget:
+                return None
+            composite = red_widget.mrmlSliceCompositeNode()
+            background_id = composite.GetBackgroundVolumeID() if composite else None
+            return slicer.mrmlScene.GetNodeByID(background_id) if background_id else None
+        except Exception:
+            return None
+
+    def _resolve_selection_volume(self):
+        try:
+            selection_node = slicer.app.applicationLogic().GetSelectionNode()
+            volume_id = selection_node.GetActiveVolumeID() if selection_node else None
+            return slicer.mrmlScene.GetNodeByID(volume_id) if volume_id else None
+        except Exception:
+            return None
+
+    def _select_best_volume_for_config(self, config: AnalysisConfig):
+        volumes = list(slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode"))
+        scored = sorted(
+            ((self._score_volume_for_config(volume_node, config), volume_node) for volume_node in volumes),
+            key=lambda item: item[0],
+            reverse=True,
+        )
+        if not scored or scored[0][0] < -1000:
+            return None
+        return scored[0][1]
+
+    def _score_volume_for_config(self, volume_node, config: AnalysisConfig) -> int:
+        study_info = self._extract_study_info(volume_node)
+        name = str(volume_node.GetName() or "").lower()
+        series = str(study_info.get("dicomSeriesDescription") or "").lower()
+        modality = str(study_info.get("dicomModality") or "").upper()
+        spacing = study_info.get("spacingMm") or []
+        score = 0
+
+        if "localizer" in name or "localizer" in series:
+            return -10000
+        if "sequence" in name and "browser" in name:
+            return -9000
+
+        if config.preset_key == "mri_ent_support":
+            if modality == "MR":
+                score += 20
+            if any(tag in series for tag in ["ci3d", "ciss", "fiesta", "space", "cube", "t2_tse", "t1 cor", "flair"]):
+                score += 15
+            if any(tag in series for tag in ["diff", "adc", "trace"]):
+                score -= 20
+            if spacing and len(spacing) >= 3:
+                slice_thickness = float(spacing[2])
+                score += 10 if slice_thickness <= 1.2 else 4 if slice_thickness <= 3.5 else -8
+        elif config.preset_key == "sinus_ct_ai":
+            if modality == "CT":
+                score += 20
+            if any(tag in series for tag in ["sinus", "pns", "head", "facial", "bone"]):
+                score += 10
+            if spacing and len(spacing) >= 3:
+                slice_thickness = float(spacing[2])
+                score += 10 if slice_thickness <= 1.5 else 4 if slice_thickness <= 3.0 else -8
+        else:
+            score += 1
+        return score
+
+    def _should_avoid_volume(self, volume_node, config: AnalysisConfig) -> bool:
+        study_info = self._extract_study_info(volume_node)
+        name = str(volume_node.GetName() or "").lower()
+        series = str(study_info.get("dicomSeriesDescription") or "").lower()
+        if "localizer" in name or "localizer" in series:
+            return True
+        if config.preset_key == "mri_ent_support" and any(tag in series for tag in ["diff", "adc", "trace"]):
+            return True
+        return False
 
     def _find_totalsegmentator(self) -> Optional[str]:
         return next(
