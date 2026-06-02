@@ -41,6 +41,7 @@ def build_ct_sinus_report(
     impression_lines = _build_impression_lines(diagnosis_hints, omc_status, anatomic_variants, report_mode)
     recommendations = _build_recommendations(diagnosis_hints, omc_status, anatomic_variants, study_info or {}, suitability)
     checklist = _build_preop_checklist(sinus_findings, omc_status, anatomic_variants) if include_checklist else []
+    patient_summary = _build_patient_summary(sinus_findings, omc_status, anatomic_variants)
     return {
         "studyModality": (study_info or {}).get("dicomModality"),
         "reportMode": report_mode,
@@ -56,6 +57,7 @@ def build_ct_sinus_report(
         "impressionLines": impression_lines,
         "recommendations": recommendations,
         "preOpChecklist": checklist,
+        "patientSummary": patient_summary,
         "reportText": _build_report_text(description, impression_lines, recommendations, lund_mackay, surgical_summary, checklist),
         "findingRows": _build_finding_rows(sinus_findings, anatomic_variants, omc_status, lund_mackay, surgical_summary),
         "disclaimer": "AI-assisted sinus CT reporting support. Final interpretation remains with the physician.",
@@ -557,3 +559,24 @@ def _build_preop_checklist(
             "note": "Correlate with symptoms and endoscopy.",
         },
     ]
+
+
+def _build_patient_summary(
+    sinus_findings: Iterable[Dict[str, object]],
+    omc_status: Dict[str, Dict[str, str]],
+    anatomic_variants: Iterable[Dict[str, object]],
+) -> str:
+    abnormal = [finding for finding in sinus_findings if finding.get("severity") != "none"]
+    if not abnormal:
+        return "The sinus cavities look mostly open on this automated review. Please discuss the scan together with your ENT specialist."
+    sides = sorted({finding.get("side") for finding in abnormal})
+    side_text = "both sides" if len(sides) > 1 else ("the right side" if "right" in sides else "the left side")
+    omc_issue = any(omc_status[side]["state"] in {"blocked", "partially_blocked", "possibly_blocked"} for side in ("left", "right"))
+    variant_issue = any(variant.get("importance") == "fess_relevant" for variant in anatomic_variants)
+    lines = [f"The automated review suggests inflammatory change involving {side_text} of the sinus system."]
+    if omc_issue:
+        lines.append("There may also be narrowing or blockage in the drainage pathway.")
+    if variant_issue:
+        lines.append("Some anatomic differences were also flagged that may matter if surgery is being considered.")
+    lines.append("This is a support summary and should be confirmed by your doctor.")
+    return " ".join(lines)

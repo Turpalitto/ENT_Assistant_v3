@@ -77,8 +77,20 @@ Current report export options include:
 - JSON report
 - HTML report
 - batch CSV registry
+- auto screenshots embedded into the HTML report when capture succeeds
 
 The HTML export is designed as a practical handoff artifact for review outside Slicer.
+
+## Workflow helpers in Slicer
+
+The module now also exposes practical UI helpers for day-to-day use:
+
+- `Radiology one-click report`
+- `FESS one-click report`
+- `Import DICOM folder`
+- `Export current case bundle`
+
+The case-bundle export is designed for a concrete local Slicer workflow: analyze a study, review the 3D scene, then export a compact package containing report artifacts and related outputs.
 
 ## What still needs a trained model
 

@@ -55,6 +55,7 @@ class SinusReportingTests(unittest.TestCase):
         self.assertTrue(report["surgicalPlanning"]["summaryLines"])
         self.assertEqual(report["suitability"]["level"], "good")
         self.assertTrue(report["preOpChecklist"])
+        self.assertIn("doctor", report["patientSummary"].lower())
 
     def test_build_ct_sinus_report_handles_near_normal_case(self):
         report = build_ct_sinus_report(

@@ -54,6 +54,7 @@ from ENT_Module.ent_assistant_core import (
 )
 from ENT_Module.sinus_reporting import build_ct_sinus_report
 from ENT_Module.report_export import write_html_report
+from ENT_Module.report_screenshots import capture_report_screenshots
 
 
 class ENTAnalysisPipeline:
@@ -156,6 +157,7 @@ class ENTAnalysisPipeline:
         if config.save_report:
             report_path = self._save_report(
                 volume_node,
+                segmentation_node,
                 preset.title,
                 measurements,
                 quality_checks,
@@ -217,6 +219,7 @@ class ENTAnalysisPipeline:
         if config.save_report:
             report_path = self._save_report(
                 volume_node,
+                segmentation_node,
                 preset.title,
                 measurements,
                 quality_checks,
@@ -598,6 +601,7 @@ class ENTAnalysisPipeline:
     def _save_report(
         self,
         volume_node,
+        segmentation_node,
         preset_title: str,
         measurements,
         quality_checks,
@@ -613,6 +617,7 @@ class ENTAnalysisPipeline:
         rtstruct_readiness = self._check_rtstruct_readiness(volume_node)
         impression_text = sinus_report["impression"] if sinus_report else build_impression(preset_title, measurements)
         html_report_path = None
+        screenshot_rows = []
         payload = {
             "volumeName": volume_node.GetName(),
             "preset": preset_title,
@@ -627,6 +632,10 @@ class ENTAnalysisPipeline:
             "exports": export_info,
             "impressionDraft": impression_text,
         }
+        if config.auto_capture_screenshots and sinus_report:
+            screenshot_dir = report_path.with_suffix("")
+            screenshot_rows = capture_report_screenshots(volume_node, segmentation_node, str(screenshot_dir))
+            payload["reportScreenshots"] = self._normalize_screenshot_rows_for_html(report_path, screenshot_rows)
         report_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         if config.export_html_report:
             html_report_path = str(report_path.with_suffix(".html"))
@@ -1023,6 +1032,16 @@ class ENTAnalysisPipeline:
         for warning in export_info.get("warnings", []):
             lines.append(f"- WARNING: {warning}")
         return "\n".join(lines)
+
+    def _normalize_screenshot_rows_for_html(self, report_path: Path, rows: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        normalized = []
+        for row in rows:
+            path = row.get("path")
+            if not path:
+                continue
+            html_path = os.path.relpath(path, start=report_path.parent)
+            normalized.append({"key": row.get("key", "view"), "path": path, "htmlPath": html_path.replace("\\", "/")})
+        return normalized
 
 
 def run_ent_analysis(config: AnalysisConfig, log_callback=None) -> Dict[str, object]:

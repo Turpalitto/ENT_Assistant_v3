@@ -31,6 +31,9 @@ The newest workflow also targets `AI-assisted CT sinus reporting` for paranasal 
 - 3D visualization helpers for sinus-focused, internal-head, and FESS-planning views.
 - Report-mode switcher: `assistant`, `radiology`, `surgeon`.
 - HTML report export and recompute-from-segmentation workflow.
+- Auto screenshots for HTML reports.
+- One-click `Radiology` and `FESS` report buttons.
+- DICOM import helper and case-bundle export helper in the Slicer UI.
 - Shared core helpers for presets and report naming.
 
 ## Open-source references used
@@ -86,6 +89,15 @@ The module now also supports:
   - emphasizes drainage pathways and FESS-relevant anatomy
 
 You can switch report mode and then use `Recompute last report from segmentation` to regenerate the report without rerunning AI segmentation.
+
+The UI also now includes:
+
+- `Radiology one-click report`
+- `FESS one-click report`
+- `Import DICOM folder`
+- `Export current case bundle`
+
+The exported case bundle can include the JSON report, HTML report, screenshots, and export directory contents when available.
 
 This is intentionally template-driven and conservative. The current implementation favors reproducible wording over free-form generative text.
 

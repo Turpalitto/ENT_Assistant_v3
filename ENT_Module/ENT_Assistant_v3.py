@@ -33,6 +33,7 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.presets = get_presets()
         self.lastVolumeNodeId = None
         self.lastSegmentationNodeId = None
+        self.lastResult = None
 
         title = qt.QLabel(
             "<h2>ENT Assistant v3</h2>"
@@ -77,6 +78,10 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.preopChecklistCheck = qt.QCheckBox("Generate pre-op ENT/FESS checklist")
         self.preopChecklistCheck.checked = True
         layout.addWidget(self.preopChecklistCheck)
+
+        self.autoScreenshotsCheck = qt.QCheckBox("Auto-capture screenshots for HTML report")
+        self.autoScreenshotsCheck.checked = True
+        layout.addWidget(self.autoScreenshotsCheck)
 
         self.exportResultsCheck = qt.QCheckBox("Export segmentation outputs to repository /exports")
         self.exportResultsCheck.checked = True
@@ -133,6 +138,15 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.runBtn.clicked.connect(self.runPipeline)
         layout.addWidget(self.runBtn)
 
+        reportButtons = qt.QHBoxLayout()
+        self.radiologyBtn = qt.QPushButton("Radiology one-click report")
+        self.radiologyBtn.clicked.connect(self.runRadiologyReport)
+        reportButtons.addWidget(self.radiologyBtn)
+        self.fessBtn = qt.QPushButton("FESS one-click report")
+        self.fessBtn.clicked.connect(self.runFessReport)
+        reportButtons.addWidget(self.fessBtn)
+        layout.addLayout(reportButtons)
+
         self.stackBtn = qt.QPushButton("Check open-source stack")
         self.stackBtn.clicked.connect(self.checkOpenSourceStack)
         layout.addWidget(self.stackBtn)
@@ -140,6 +154,15 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.recomputeBtn = qt.QPushButton("Recompute last report from segmentation")
         self.recomputeBtn.clicked.connect(self.recomputeLastReport)
         layout.addWidget(self.recomputeBtn)
+
+        workflowButtons = qt.QHBoxLayout()
+        self.importDicomBtn = qt.QPushButton("Import DICOM folder")
+        self.importDicomBtn.clicked.connect(self.importDicomFolder)
+        workflowButtons.addWidget(self.importDicomBtn)
+        self.exportBundleBtn = qt.QPushButton("Export current case bundle")
+        self.exportBundleBtn.clicked.connect(self.exportCurrentCaseBundle)
+        workflowButtons.addWidget(self.exportBundleBtn)
+        layout.addLayout(workflowButtons)
 
         viewButtons = qt.QHBoxLayout()
         self.sinus3dBtn = qt.QPushButton("Prepare 3D sinus view")
@@ -195,6 +218,7 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                 report_mode=self.reportModeCombo.currentText,
                 export_html_report=self.exportHtmlReportCheck.checked,
                 generate_preop_checklist=self.preopChecklistCheck.checked,
+                auto_capture_screenshots=self.autoScreenshotsCheck.checked,
                 export_results=self.exportResultsCheck.checked,
                 export_seg_nrrd=self.exportSegNrrdCheck.checked,
                 export_labelmap_nifti=self.exportLabelmapCheck.checked,
@@ -212,6 +236,7 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             self.output.clear()
             self.populateFindingsTable([])
             result = module.run_ent_analysis(config, log_callback=self.appendOutput)
+            self.lastResult = result
             if "cases" in result:
                 self.appendOutput(f"Batch completed: {result['count']} volumes")
                 if result.get("batchIndexPath"):
@@ -250,6 +275,7 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                 self.populateFindingsTable(sinus_report.get("findingRows") or [])
                 suitability = sinus_report.get("suitability") or {}
                 self.appendOutput(f"Suitability: {suitability.get('level')} ({suitability.get('score')})")
+                self.appendOutput(f"Patient summary: {sinus_report.get('patientSummary')}")
         except Exception as error:
             self.output.setText(f"Pipeline error:\n{error}")
 
@@ -268,11 +294,13 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                 report_mode=self.reportModeCombo.currentText,
                 export_html_report=self.exportHtmlReportCheck.checked,
                 generate_preop_checklist=self.preopChecklistCheck.checked,
+                auto_capture_screenshots=self.autoScreenshotsCheck.checked,
                 export_results=False,
                 export_rtstruct=False,
             )
             self.output.clear()
             result = module.recompute_ent_analysis(self.lastVolumeNodeId, self.lastSegmentationNodeId, config, log_callback=self.appendOutput)
+            self.lastResult = result
             self.appendOutput(f"Recomputed preset: {result['preset']}")
             if result.get("reportPath"):
                 self.appendOutput(f"Report: {result['reportPath']}")
@@ -285,6 +313,41 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                 self.appendOutput(sinus_report.get("reportText", ""))
         except Exception as error:
             self.output.setText(f"Recompute error:\n{error}")
+
+    def runRadiologyReport(self):
+        self.reportModeCombo.setCurrentText("radiology")
+        self.runPipeline()
+
+    def runFessReport(self):
+        self.reportModeCombo.setCurrentText("surgeon")
+        self.runPipeline()
+
+    def importDicomFolder(self):
+        try:
+            folder = qt.QFileDialog.getExistingDirectory(slicer.util.mainWindow(), "Select DICOM folder")
+            if not folder:
+                return
+            workflow_path = os.path.abspath(os.path.join(MODULE_DIR, "slicer_workflow.py"))
+            module = self._load_python_module("ent_slicer_workflow_runtime_import", workflow_path)
+            result = module.import_dicom_folder(folder)
+            self.output.setText(f"DICOM import completed.\n\n{result}")
+        except Exception as error:
+            self.output.setText(f"DICOM import error:\n{error}")
+
+    def exportCurrentCaseBundle(self):
+        try:
+            if not self.lastResult:
+                self.output.setText("Run or recompute a case first so there is something to export.")
+                return
+            folder = qt.QFileDialog.getExistingDirectory(slicer.util.mainWindow(), "Select export folder")
+            if not folder:
+                return
+            workflow_path = os.path.abspath(os.path.join(MODULE_DIR, "slicer_workflow.py"))
+            module = self._load_python_module("ent_slicer_workflow_runtime_export", workflow_path)
+            result = module.export_case_bundle(self.lastResult, folder)
+            self.appendOutput(f"Case bundle exported: {result}")
+        except Exception as error:
+            self.output.setText(f"Case bundle export error:\n{error}")
 
     def runDevScript(self):
         try:

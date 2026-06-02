@@ -19,7 +19,9 @@ def build_html_report(payload: Dict[str, object]) -> str:
     quality_checks = payload.get("qualityChecks") or []
     measurements = payload.get("measurements") or []
     checklist = sinus_report.get("preOpChecklist") or []
+    patient_summary = sinus_report.get("patientSummary")
     report_mode = sinus_report.get("reportMode") or "assistant"
+    screenshots = payload.get("reportScreenshots") or []
 
     sections = [
         "<!doctype html>",
@@ -54,11 +56,22 @@ def build_html_report(payload: Dict[str, object]) -> str:
                 "<section><h2>Recommendations</h2>",
                 _bullet_list(sinus_report.get("recommendations") or []),
                 "</section>",
+                "<section><h2>Patient-Friendly Summary</h2>",
+                f"<p>{escape(str(patient_summary or 'No compact patient summary.'))}</p>",
+                "</section>",
                 "<section><h2>Surgical Planning</h2>",
                 _bullet_list((sinus_report.get("surgicalPlanning") or {}).get("summaryLines") or []),
                 "</section>",
                 "<section><h2>Pre-op Checklist</h2>",
                 _checklist_table(checklist),
+                "</section>",
+            ]
+        )
+    if screenshots:
+        sections.extend(
+            [
+                "<section><h2>Auto Screenshots</h2>",
+                _screenshot_gallery(screenshots),
                 "</section>",
             ]
         )
@@ -153,3 +166,19 @@ def _checklist_table(rows: List[Dict[str, object]]) -> str:
         for row in rows
     )
     return f"<table>{head}{body}</table>"
+
+
+def _screenshot_gallery(rows: List[Dict[str, object]]) -> str:
+    parts = []
+    for row in rows:
+        path = row.get("htmlPath") or row.get("path")
+        if not path:
+            continue
+        title = escape(str(row.get("key", "view")))
+        parts.append(
+            f"<figure style='margin:0 0 18px 0'><figcaption style='margin-bottom:8px'>{title}</figcaption>"
+            f"<img src='{escape(str(path))}' alt='{title}' style='max-width:100%; border-radius:10px; border:1px solid #ddd' /></figure>"
+        )
+    if not parts:
+        return "<p class='muted'>No screenshots.</p>"
+    return "".join(parts)

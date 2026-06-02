@@ -37,6 +37,7 @@ class AnalysisConfig:
     report_mode: str = "assistant"
     export_html_report: bool = True
     generate_preop_checklist: bool = True
+    auto_capture_screenshots: bool = True
     batch_mode: str = "active"
     export_results: bool = True
     export_seg_nrrd: bool = True
