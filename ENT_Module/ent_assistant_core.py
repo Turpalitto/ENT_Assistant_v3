@@ -73,6 +73,14 @@ DEFAULT_PRESETS: Dict[str, AnalysisPreset] = {
         minimum_expected_volume_ml=0.05,
         maximum_expected_volume_ml=300.0,
     ),
+    "mri_ent_support": AnalysisPreset(
+        key="mri_ent_support",
+        title="ENT / temporal bone MRI support",
+        description="MRI support workflow for ENT, skull-base and temporal-bone style review with sequence-aware reporting.",
+        mode="mri_support",
+        minimum_expected_volume_ml=0.05,
+        maximum_expected_volume_ml=5000.0,
+    ),
     "ent_threshold": AnalysisPreset(
         key="ent_threshold",
         title="ENT CT: bone + airway",

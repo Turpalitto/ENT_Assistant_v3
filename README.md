@@ -3,6 +3,7 @@
 ENT Assistant v3 is a 3D Slicer helper module for ENT and head CT analysis. The starting repository was only a simple launcher around ad-hoc scripts; this version adds actual presets, reusable pipeline code, optional open-source AI segmentation, and report generation.
 
 The newest workflow also targets `AI-assisted CT sinus reporting` for paranasal sinus CT studies, with sinus-focused anatomy tracking, pathology heuristics, OMC status estimation, anatomic-variant flags, and draft radiology-style text output.
+The project now also includes an `ENT / temporal bone MRI support` workflow for MRI sequence-aware ENT review, patient summary, and structured support reporting.
 
 ## Added capabilities
 
@@ -13,6 +14,7 @@ The newest workflow also targets `AI-assisted CT sinus reporting` for paranasal 
 - Volume measurement report export to `reports/*.json`.
 - Structured report draft inspired by open-source clinical reporting workflows.
 - Dedicated `CT PNS: AI-assisted sinus report` preset for paranasal sinus CT.
+- Dedicated `ENT / temporal bone MRI support` preset for MRI sequence-aware ENT review.
 - Rule-based QC checks for suspicious or incomplete segmentations.
 - Export pipeline for `.seg.nrrd`, `.nii.gz` labelmaps, and optional STL surfaces.
 - AI runtime options inspired by SlicerTotalSegmentator, including `fast`, CPU mode, and `robust_crop`.
@@ -51,6 +53,7 @@ The current presets use the public TotalSegmentator tasks `head_glands_cavities`
 ## Presets
 
 - `CT PNS: AI-assisted sinus report`
+- `ENT / temporal bone MRI support`
 - `ENT CT: bone + airway`
 - `Head & neck AI preset`
 - `Craniofacial AI preset`
@@ -94,6 +97,7 @@ The UI also now includes:
 
 - `Radiology one-click report`
 - `FESS one-click report`
+- `MRI one-click report`
 - `Import DICOM folder`
 - `Export current case bundle`
 

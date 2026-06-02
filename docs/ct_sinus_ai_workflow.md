@@ -87,6 +87,7 @@ The module now also exposes practical UI helpers for day-to-day use:
 
 - `Radiology one-click report`
 - `FESS one-click report`
+- `MRI one-click report`
 - `Import DICOM folder`
 - `Export current case bundle`
 

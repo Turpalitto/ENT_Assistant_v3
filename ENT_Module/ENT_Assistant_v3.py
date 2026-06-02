@@ -145,6 +145,9 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.fessBtn = qt.QPushButton("FESS one-click report")
         self.fessBtn.clicked.connect(self.runFessReport)
         reportButtons.addWidget(self.fessBtn)
+        self.mriBtn = qt.QPushButton("MRI one-click report")
+        self.mriBtn.clicked.connect(self.runMriReport)
+        reportButtons.addWidget(self.mriBtn)
         layout.addLayout(reportButtons)
 
         self.stackBtn = qt.QPushButton("Check open-source stack")
@@ -269,6 +272,7 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             if rtstruct_readiness:
                 self.appendOutput(f"RTSTRUCT ready: {rtstruct_readiness.get('ready')}")
             sinus_report = result.get("sinusReport")
+            mri_report = result.get("mriReport")
             if sinus_report:
                 self.appendOutput("")
                 self.appendOutput(sinus_report.get("reportText", ""))
@@ -276,6 +280,13 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                 suitability = sinus_report.get("suitability") or {}
                 self.appendOutput(f"Suitability: {suitability.get('level')} ({suitability.get('score')})")
                 self.appendOutput(f"Patient summary: {sinus_report.get('patientSummary')}")
+            elif mri_report:
+                self.appendOutput("")
+                self.appendOutput(mri_report.get("reportText", ""))
+                self.populateFindingsTable(mri_report.get("findingRows") or [])
+                suitability = mri_report.get("suitability") or {}
+                self.appendOutput(f"MRI suitability: {suitability.get('level')} ({suitability.get('score')})")
+                self.appendOutput(f"Patient summary: {mri_report.get('patientSummary')}")
         except Exception as error:
             self.output.setText(f"Pipeline error:\n{error}")
 
@@ -311,15 +322,34 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                 self.populateFindingsTable(sinus_report.get("findingRows") or [])
                 self.appendOutput("")
                 self.appendOutput(sinus_report.get("reportText", ""))
+            else:
+                mri_report = result.get("mriReport")
+                if mri_report:
+                    self.populateFindingsTable(mri_report.get("findingRows") or [])
+                    self.appendOutput("")
+                    self.appendOutput(mri_report.get("reportText", ""))
         except Exception as error:
             self.output.setText(f"Recompute error:\n{error}")
 
     def runRadiologyReport(self):
+        index = self.presetCombo.findText("CT PNS: AI-assisted sinus report")
+        if index >= 0:
+            self.presetCombo.setCurrentIndex(index)
         self.reportModeCombo.setCurrentText("radiology")
         self.runPipeline()
 
     def runFessReport(self):
+        index = self.presetCombo.findText("CT PNS: AI-assisted sinus report")
+        if index >= 0:
+            self.presetCombo.setCurrentIndex(index)
         self.reportModeCombo.setCurrentText("surgeon")
+        self.runPipeline()
+
+    def runMriReport(self):
+        self.reportModeCombo.setCurrentText("assistant")
+        index = self.presetCombo.findText("ENT / temporal bone MRI support")
+        if index >= 0:
+            self.presetCombo.setCurrentIndex(index)
         self.runPipeline()
 
     def importDicomFolder(self):

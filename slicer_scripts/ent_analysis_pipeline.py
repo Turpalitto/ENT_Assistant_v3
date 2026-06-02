@@ -53,6 +53,7 @@ from ENT_Module.ent_assistant_core import (
     summarize_measurements,
 )
 from ENT_Module.sinus_reporting import build_ct_sinus_report
+from ENT_Module.mri_reporting import build_ent_mri_report
 from ENT_Module.report_export import write_html_report
 from ENT_Module.report_screenshots import capture_report_screenshots
 
@@ -107,8 +108,12 @@ class ENTAnalysisPipeline:
         modality = str(study_info.get("dicomModality") or "")
         if modality and modality.upper() != "CT" and config.preset_key == "sinus_ct_ai":
             self.log(f"Warning: sinus radiology mode is optimized for CT, but the loaded modality is {modality}.")
+        if modality and modality.upper() != "MR" and config.preset_key == "mri_ent_support":
+            self.log(f"Warning: MRI support mode is optimized for MRI, but the loaded modality is {modality}.")
 
-        if config.preset_key == "sinus_ct_ai":
+        if config.preset_key == "mri_ent_support":
+            segmentation_node = self._run_mri_support_segmentation(volume_node)
+        elif config.preset_key == "sinus_ct_ai":
             sinus_predictor = self._find_nnunet_predictor()
             if sinus_predictor and self._is_nnunet_sinus_configured():
                 self.log(f"Using nnU-Net sinus backend: {sinus_predictor}")
@@ -148,6 +153,15 @@ class ENTAnalysisPipeline:
             if config.preset_key == "sinus_ct_ai"
             else None
         )
+        mri_report = (
+            build_ent_mri_report(
+                study_info,
+                measurements,
+                report_mode=config.report_mode,
+            )
+            if config.preset_key == "mri_ent_support"
+            else None
+        )
         rtstruct_readiness = self._check_rtstruct_readiness(volume_node)
         export_info = None
         if config.export_results:
@@ -166,6 +180,7 @@ class ENTAnalysisPipeline:
                 config,
                 study_info=study_info,
                 sinus_report=sinus_report,
+                mri_report=mri_report,
             )
             self.log(f"Report saved: {report_path}")
 
@@ -178,6 +193,9 @@ class ENTAnalysisPipeline:
         if sinus_report:
             self.log("Sinus report:")
             self.log(sinus_report["reportText"])
+        if mri_report:
+            self.log("MRI report:")
+            self.log(mri_report["reportText"])
         return {
             "volumeName": volume_node.GetName(),
             "volumeNodeId": volume_node.GetID(),
@@ -190,6 +208,7 @@ class ENTAnalysisPipeline:
             "entSummary": ent_summary,
             "pathologyFlags": pathology_flags,
             "sinusReport": sinus_report,
+            "mriReport": mri_report,
             "rtstructReadiness": rtstruct_readiness,
             "exportInfo": export_info,
             "reportPath": report_path,
@@ -214,6 +233,11 @@ class ENTAnalysisPipeline:
             if config.preset_key == "sinus_ct_ai"
             else None
         )
+        mri_report = (
+            build_ent_mri_report(study_info, measurements, report_mode=config.report_mode)
+            if config.preset_key == "mri_ent_support"
+            else None
+        )
         export_info = None
         report_path = None
         if config.save_report:
@@ -228,6 +252,7 @@ class ENTAnalysisPipeline:
                 config,
                 study_info=study_info,
                 sinus_report=sinus_report,
+                mri_report=mri_report,
             )
             self.log(f"Recomputed report saved: {report_path}")
         return {
@@ -242,6 +267,7 @@ class ENTAnalysisPipeline:
             "entSummary": ent_summary,
             "pathologyFlags": pathology_flags,
             "sinusReport": sinus_report,
+            "mriReport": mri_report,
             "rtstructReadiness": self._check_rtstruct_readiness(volume_node),
             "exportInfo": export_info,
             "reportPath": report_path,
@@ -496,6 +522,41 @@ class ENTAnalysisPipeline:
         segmentation_node.GetDisplayNode().SetVisibility3D(True)
         return segmentation_node
 
+    def _run_mri_support_segmentation(self, volume_node):
+        array = slicer.util.arrayFromVolume(volume_node).astype(np.float32)
+        nonzero = array[array > 0]
+        if nonzero.size == 0:
+            nonzero = array.flatten()
+        if nonzero.size == 0:
+            raise RuntimeError("MRI volume appears empty.")
+        foreground_threshold = float(np.percentile(nonzero, 20))
+        low_signal_threshold = float(np.percentile(nonzero, 5))
+
+        segmentation_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
+        segmentation_node.SetName("ENT_MRI_Support_Segmentation")
+        segmentation_node.CreateDefaultDisplayNodes()
+        segmentation_node.SetReferenceImageGeometryParameterFromVolumeNode(volume_node)
+
+        foreground_id = segmentation_node.GetSegmentation().AddEmptySegment("MRI_Foreground")
+        low_signal_id = segmentation_node.GetSegmentation().AddEmptySegment("MRI_LowSignal")
+
+        editor_widget = slicer.qMRMLSegmentEditorWidget()
+        editor_widget.setMRMLScene(slicer.mrmlScene)
+        editor_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentEditorNode")
+        editor_widget.setMRMLSegmentEditorNode(editor_node)
+        editor_widget.setSegmentationNode(segmentation_node)
+        editor_widget.setSourceVolumeNode(volume_node)
+
+        max_value = float(np.percentile(nonzero, 99.5))
+        self._apply_threshold(editor_widget, editor_node, foreground_id, int(foreground_threshold), int(max_value))
+        self._apply_threshold(editor_widget, editor_node, low_signal_id, int(max(float(nonzero.min()), 0.0)), int(low_signal_threshold))
+
+        segmentation_node.GetSegmentation().GetSegment(foreground_id).SetColor(0.92, 0.72, 0.54)
+        segmentation_node.GetSegmentation().GetSegment(low_signal_id).SetColor(0.24, 0.46, 0.88)
+        segmentation_node.CreateClosedSurfaceRepresentation()
+        segmentation_node.GetDisplayNode().SetVisibility3D(True)
+        return segmentation_node
+
     def _apply_threshold(self, editor_widget, editor_node, segment_id: str, minimum: int, maximum: int):
         editor_node.SetSelectedSegmentID(segment_id)
         editor_widget.setActiveEffectByName("Threshold")
@@ -610,12 +671,19 @@ class ENTAnalysisPipeline:
         config: AnalysisConfig,
         study_info=None,
         sinus_report=None,
+        mri_report=None,
     ) -> str:
         report_dir = ensure_report_dir(config.report_dir, REPO_ROOT)
         report_path = build_report_path(report_dir, volume_node.GetName(), preset_title)
         pathology_flags = build_ent_pathology_flags(measurements)
         rtstruct_readiness = self._check_rtstruct_readiness(volume_node)
-        impression_text = sinus_report["impression"] if sinus_report else build_impression(preset_title, measurements)
+        impression_text = (
+            sinus_report["impression"]
+            if sinus_report
+            else mri_report["impression"]
+            if mri_report
+            else build_impression(preset_title, measurements)
+        )
         html_report_path = None
         screenshot_rows = []
         payload = {
@@ -628,11 +696,12 @@ class ENTAnalysisPipeline:
             "entSummary": ent_summary,
             "pathologyFlags": pathology_flags,
             "sinusReport": sinus_report,
+            "mriReport": mri_report,
             "rtstructReadiness": rtstruct_readiness,
             "exports": export_info,
             "impressionDraft": impression_text,
         }
-        if config.auto_capture_screenshots and sinus_report:
+        if config.auto_capture_screenshots and (sinus_report or mri_report):
             screenshot_dir = report_path.with_suffix("")
             screenshot_rows = capture_report_screenshots(volume_node, segmentation_node, str(screenshot_dir))
             payload["reportScreenshots"] = self._normalize_screenshot_rows_for_html(report_path, screenshot_rows)

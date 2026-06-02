@@ -16,11 +16,12 @@ def write_html_report(target_path: str, payload: Dict[str, object]) -> str:
 def build_html_report(payload: Dict[str, object]) -> str:
     study_info = payload.get("studyInfo") or {}
     sinus_report = payload.get("sinusReport") or {}
+    mri_report = payload.get("mriReport") or {}
     quality_checks = payload.get("qualityChecks") or []
     measurements = payload.get("measurements") or []
     checklist = sinus_report.get("preOpChecklist") or []
-    patient_summary = sinus_report.get("patientSummary")
-    report_mode = sinus_report.get("reportMode") or "assistant"
+    patient_summary = sinus_report.get("patientSummary") or mri_report.get("patientSummary")
+    report_mode = sinus_report.get("reportMode") or mri_report.get("reportMode") or "assistant"
     screenshots = payload.get("reportScreenshots") or []
 
     sections = [
@@ -64,6 +65,23 @@ def build_html_report(payload: Dict[str, object]) -> str:
                 "</section>",
                 "<section><h2>Pre-op Checklist</h2>",
                 _checklist_table(checklist),
+                "</section>",
+            ]
+        )
+    elif mri_report:
+        sections.extend(
+            [
+                "<section><h2>Description</h2>",
+                f"<pre>{escape(str(mri_report.get('description', '')))}</pre>",
+                "</section>",
+                "<section><h2>Impression</h2>",
+                _bullet_list(mri_report.get("impressionLines") or [mri_report.get("impression")]),
+                "</section>",
+                "<section><h2>Recommendations</h2>",
+                _bullet_list(mri_report.get("recommendations") or []),
+                "</section>",
+                "<section><h2>Patient-Friendly Summary</h2>",
+                f"<p>{escape(str(patient_summary or 'No compact patient summary.'))}</p>",
                 "</section>",
             ]
         )
