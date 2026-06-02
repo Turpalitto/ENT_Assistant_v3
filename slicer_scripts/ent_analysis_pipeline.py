@@ -105,6 +105,7 @@ class ENTAnalysisPipeline:
         preset = get_preset(config.preset_key)
         self.log(f"Starting preset: {preset.title}")
         study_info = self._extract_study_info(volume_node)
+        self._optimize_display_for_volume(volume_node, config, study_info)
         modality = str(study_info.get("dicomModality") or "")
         if modality and modality.upper() != "CT" and config.preset_key == "sinus_ct_ai":
             self.log(f"Warning: sinus radiology mode is optimized for CT, but the loaded modality is {modality}.")
@@ -215,6 +216,31 @@ class ENTAnalysisPipeline:
             "htmlReportPath": str(Path(report_path).with_suffix(".html")) if report_path and config.export_html_report else None,
             "summary": summary,
         }
+
+    def _optimize_display_for_volume(self, volume_node, config: AnalysisConfig, study_info: Dict[str, object]) -> None:
+        display_node = volume_node.GetDisplayNode()
+        if not display_node:
+            return
+        try:
+            array = slicer.util.arrayFromVolume(volume_node).astype(np.float32)
+            nonzero = array[array > 0]
+            modality = str(study_info.get("dicomModality") or "").upper()
+            display_node.AutoWindowLevelOff()
+            if config.preset_key == "mri_ent_support" or modality == "MR":
+                sample = nonzero if nonzero.size else array.flatten()
+                if sample.size == 0:
+                    return
+                low = float(np.percentile(sample, 2))
+                high = float(np.percentile(sample, 99.5))
+                window = max(high - low, 1.0)
+                level = (high + low) / 2.0
+                display_node.SetWindow(window)
+                display_node.SetLevel(level)
+            elif config.preset_key == "sinus_ct_ai" or modality == "CT":
+                display_node.SetWindow(2200)
+                display_node.SetLevel(250)
+        except Exception:
+            return
 
     def recompute_existing(self, volume_node, segmentation_node, config: AnalysisConfig) -> Dict[str, object]:
         preset = get_preset(config.preset_key)
@@ -359,13 +385,15 @@ class ENTAnalysisPipeline:
             return -10000
         if "sequence" in name and "browser" in name:
             return -9000
+        if any(tag in name or tag in series for tag in ["_mip", " mip", " minip", " mpr", "_mpr"]):
+            return -8500
 
         if config.preset_key == "mri_ent_support":
             if modality == "MR":
                 score += 20
             if any(tag in series for tag in ["ci3d", "ciss", "fiesta", "space", "cube", "t2_tse", "t1 cor", "flair"]):
                 score += 15
-            if any(tag in series for tag in ["diff", "adc", "trace"]):
+            if any(tag in name or tag in series for tag in ["diff", "adc", "trace", "mip", "mpr"]):
                 score -= 20
             if spacing and len(spacing) >= 3:
                 slice_thickness = float(spacing[2])
@@ -388,7 +416,9 @@ class ENTAnalysisPipeline:
         series = str(study_info.get("dicomSeriesDescription") or "").lower()
         if "localizer" in name or "localizer" in series:
             return True
-        if config.preset_key == "mri_ent_support" and any(tag in series for tag in ["diff", "adc", "trace"]):
+        if any(tag in name or tag in series for tag in ["_mip", " mip", " minip", " mpr", "_mpr"]):
+            return True
+        if config.preset_key == "mri_ent_support" and any(tag in name or tag in series for tag in ["diff", "adc", "trace"]):
             return True
         return False
 
@@ -651,8 +681,18 @@ class ENTAnalysisPipeline:
 
         segmentation_node.GetSegmentation().GetSegment(foreground_id).SetColor(0.92, 0.72, 0.54)
         segmentation_node.GetSegmentation().GetSegment(low_signal_id).SetColor(0.24, 0.46, 0.88)
-        segmentation_node.CreateClosedSurfaceRepresentation()
-        segmentation_node.GetDisplayNode().SetVisibility3D(True)
+        display_node = segmentation_node.GetDisplayNode()
+        display_node.SetVisibility3D(False)
+        if hasattr(display_node, "SetVisibility2DFill"):
+            display_node.SetVisibility2DFill(False)
+        if hasattr(display_node, "SetVisibility2DOutline"):
+            display_node.SetVisibility2DOutline(False)
+        if hasattr(display_node, "SetOpacity3D"):
+            display_node.SetOpacity3D(0.0)
+        if hasattr(display_node, "SetOpacity2DFill"):
+            display_node.SetOpacity2DFill(0.0)
+        if hasattr(display_node, "SetOpacity2DOutline"):
+            display_node.SetOpacity2DOutline(0.0)
         return segmentation_node
 
     def _apply_threshold(self, editor_widget, editor_node, segment_id: str, minimum: int, maximum: int):
@@ -801,7 +841,13 @@ class ENTAnalysisPipeline:
         }
         if config.auto_capture_screenshots and (sinus_report or mri_report):
             screenshot_dir = report_path.with_suffix("")
-            screenshot_rows = capture_report_screenshots(volume_node, segmentation_node, str(screenshot_dir))
+            report_kind = "mri_ent" if mri_report else "sinus_ct"
+            screenshot_rows = capture_report_screenshots(
+                volume_node,
+                segmentation_node,
+                str(screenshot_dir),
+                report_kind=report_kind,
+            )
             payload["reportScreenshots"] = self._normalize_screenshot_rows_for_html(report_path, screenshot_rows)
         report_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         if config.export_html_report:
@@ -900,7 +946,22 @@ class ENTAnalysisPipeline:
             "dimensionsVoxels": dimensions,
         }
         payload.update(self._extract_dicom_metadata(volume_node))
+        if not payload.get("dicomModality"):
+            payload["dicomModality"] = self._infer_modality_from_volume(payload)
         return payload
+
+    def _infer_modality_from_volume(self, study_info: Dict[str, object]) -> str:
+        name = str(study_info.get("volumeName") or "").lower()
+        series = str(study_info.get("dicomSeriesDescription") or "").lower()
+        combined = f"{name} {series}"
+        if any(
+            tag in combined
+            for tag in [" t1", " t2", "flair", "dwi", "adc", "ciss", "fiesta", "space", "vibe", "mri", "mr "]
+        ):
+            return "MR"
+        if any(tag in combined for tag in ["ct", "bone", "sinus", "pns", "facial"]):
+            return "CT"
+        return ""
 
     def _extract_dicom_metadata(self, volume_node) -> Dict[str, object]:
         payload: Dict[str, object] = {}

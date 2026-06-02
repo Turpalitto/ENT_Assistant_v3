@@ -13,6 +13,7 @@ This repository now includes a dedicated `CT PNS: AI-assisted sinus report` work
 
 2. `Open-source segmentation backbones`
    - `TotalSegmentator` for baseline craniofacial anatomy bootstrapping
+   - `MONAI` as an optional transform/inference building-block layer when available in the runtime
    - `MONAI Label` for interactive annotation and future custom app deployment
    - `nnU-Net v2` for future supervised sinus CT model training/inference
 
@@ -78,6 +79,7 @@ Current report export options include:
 - HTML report
 - batch CSV registry
 - auto screenshots embedded into the HTML report when capture succeeds
+- explainability/evidence table based on structured finding rows
 
 The HTML export is designed as a practical handoff artifact for review outside Slicer.
 
@@ -92,6 +94,16 @@ The module now also exposes practical UI helpers for day-to-day use:
 - `Export current case bundle`
 
 The case-bundle export is designed for a concrete local Slicer workflow: analyze a study, review the 3D scene, then export a compact package containing report artifacts and related outputs.
+
+## MRI support note
+
+The `ENT / temporal bone MRI support` preset now uses a slice-first export strategy:
+
+- it avoids CT-style 3D sinus rendering for MRI reports
+- it captures `Red`, `Green`, and `Yellow` slice screenshots for HTML evidence
+- it suppresses noisy MRI support segmentation overlays in routine use
+
+This keeps the MRI workflow closer to practical viewer behavior seen in open MRI-review tools while remaining conservative about unsupported 3D claims.
 
 ## What still needs a trained model
 

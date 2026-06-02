@@ -34,8 +34,11 @@ The project now also includes an `ENT / temporal bone MRI support` workflow for 
 - Report-mode switcher: `assistant`, `radiology`, `surgeon`.
 - HTML report export and recompute-from-segmentation workflow.
 - Auto screenshots for HTML reports.
+- Modality-aware screenshot capture: CT gets 3D + slice views, MRI gets slice-first evidence views without noisy CT-style 3D rendering.
+- Explainability/evidence section in HTML reports based on structured finding rows.
 - One-click `Radiology` and `FESS` report buttons.
 - DICOM import helper and case-bundle export helper in the Slicer UI.
+- Open-source stack check with local runtime profile for Torch, MONAI, SimpleITK, and NVIDIA GPU readiness.
 - Shared core helpers for presets and report naming.
 
 ## Open-source references used
@@ -43,12 +46,15 @@ The project now also includes an `ENT / temporal bone MRI support` workflow for 
 - [TotalSegmentator](https://github.com/wasserth/totalsegmentator)
 - [nnU-Net](https://github.com/MIC-DKFZ/nnUNet)
 - [MONAI Label](https://github.com/project-monai/monailabel)
+- [MONAI](https://github.com/project-monai/monai)
 - [SlicerSegmentEditorExtraEffects](https://github.com/lassoan/SlicerSegmentEditorExtraEffects)
 - [Raidionics-Slicer](https://github.com/raidionics/Raidionics-Slicer)
 - [CloudSegmentatorResults](https://github.com/ImagingDataCommons/CloudSegmentatorResults)
 - [SlicerAirwaySegmentation](https://github.com/Slicer/SlicerAirwaySegmentation)
+- [Explainable CT AI](https://github.com/rachellea/explainable-ct-ai)
+- [AI-Powered MRI Viewer](https://github.com/albertovalverde/AI-Powered-MRI-Viewer)
 
-The current presets use the public TotalSegmentator tasks `head_glands_cavities`, `headneck_bones_vessels`, and `craniofacial_structures`, which are directly relevant to ENT and head CT workflows. The sinus CT preset builds a sinus-specific rule layer on top of these anatomical masks, while leaving room for a future custom `nnU-Net` / `MONAI Label` sinus model.
+The current presets use the public TotalSegmentator tasks `head_glands_cavities`, `headneck_bones_vessels`, and `craniofacial_structures`, which are directly relevant to ENT and head CT workflows. The sinus CT preset builds a sinus-specific rule layer on top of these anatomical masks, while leaving room for a future custom `nnU-Net` / `MONAI Label` sinus model. The runtime stack check now also reports whether `MONAI` is actually available inside Slicer Python, because many workstations end up with CPU-only Torch in Slicer and GPU-enabled AI in a separate environment.
 
 ## Presets
 
@@ -102,6 +108,7 @@ The UI also now includes:
 - `Export current case bundle`
 
 The exported case bundle can include the JSON report, HTML report, screenshots, and export directory contents when available.
+For MRI, the HTML export now favors axial/coronal/sagittal slice evidence instead of CT-like 3D screenshots, to keep the viewer clinically readable.
 
 This is intentionally template-driven and conservative. The current implementation favors reproducible wording over free-form generative text.
 

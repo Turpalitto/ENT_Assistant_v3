@@ -23,6 +23,7 @@ def build_html_report(payload: Dict[str, object]) -> str:
     patient_summary = sinus_report.get("patientSummary") or mri_report.get("patientSummary")
     report_mode = sinus_report.get("reportMode") or mri_report.get("reportMode") or "assistant"
     screenshots = payload.get("reportScreenshots") or []
+    evidence_rows = sinus_report.get("findingRows") or mri_report.get("findingRows") or []
 
     sections = [
         "<!doctype html>",
@@ -96,6 +97,9 @@ def build_html_report(payload: Dict[str, object]) -> str:
 
     sections.extend(
         [
+            "<section><h2>Explainability / Evidence</h2>",
+            _evidence_table(evidence_rows),
+            "</section>",
             "<section><h2>Measurements</h2>",
             _measurement_table(measurements),
             "</section>",
@@ -165,6 +169,22 @@ def _quality_table(rows: List[Dict[str, object]]) -> str:
         f"<td>{escape(str(row.get('level', '')))}</td>"
         f"<td>{escape(str(row.get('code', '')))}</td>"
         f"<td>{escape(str(row.get('message', '')))}</td>"
+        "</tr>"
+        for row in rows
+    )
+    return f"<table>{head}{body}</table>"
+
+
+def _evidence_table(rows: List[Dict[str, object]]) -> str:
+    if not rows:
+        return "<p class='muted'>No structured finding rows.</p>"
+    head = "<tr><th>Category</th><th>Structure</th><th>Status</th><th>Details</th></tr>"
+    body = "".join(
+        "<tr>"
+        f"<td>{escape(str(row.get('category', '')))}</td>"
+        f"<td>{escape(str(row.get('structure', '')))}</td>"
+        f"<td>{escape(str(row.get('status', '')))}</td>"
+        f"<td>{escape(str(row.get('details', '')))}</td>"
         "</tr>"
         for row in rows
     )

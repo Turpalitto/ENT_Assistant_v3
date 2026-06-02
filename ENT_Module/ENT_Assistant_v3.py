@@ -474,6 +474,12 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             if not self.lastVolumeNodeId:
                 self.output.setText("Run analysis first, or load a CT and analyze it to prepare 3D visualization.")
                 return
+            if self.getSelectedPresetKey() == "mri_ent_support":
+                self.output.setText(
+                    "MRI workflow uses report text and slice screenshots. "
+                    "These 3D view buttons are CT/FESS-oriented and are intentionally disabled for MRI studies."
+                )
+                return
             volume_node = slicer.mrmlScene.GetNodeByID(self.lastVolumeNodeId)
             segmentation_node = slicer.mrmlScene.GetNodeByID(self.lastSegmentationNodeId) if self.lastSegmentationNodeId else None
             visualization_path = os.path.abspath(os.path.join(MODULE_DIR, "sinus_visualization.py"))
