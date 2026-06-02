@@ -102,6 +102,18 @@ The newer `Export AI workspace` path goes further and prepares a local handoff b
 - `nnunet_workspace/imagesTs` and `labelsTs`
 - a starter `dataset.json`
 - example `.cmd` launchers for `TotalSegmentator`, `MONAI Label`, and `nnU-Net`
+- a `vista3d_workspace` folder with prompt-template scaffolding
+
+## Interactive refinement layer
+
+The module now also has a dedicated `Prepare interactive refinement` action that:
+
+- switches the case into a correction-friendly Slicer workflow
+- re-exposes the latest segmentation in 2D for editing
+- opens `Segment Editor`
+- builds a refinement checklist from QC items and structured findings
+
+This is intended as the bridge between automated analysis and clinician correction before recomputing the final report.
 
 ## MRI support note
 

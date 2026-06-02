@@ -297,8 +297,8 @@ def _build_command_templates(case_name: str, modality: str, runtime: Dict[str, o
     if nnunet_binary:
         commands["run_nnunet_inference_example"] = (
             "@echo off\n"
-            "REM Edit model folder / dataset / trainer flags as needed.\n"
-            f"\"{nnunet_binary}\" -i %CD% -o %CD%\\nnunet_prediction -f all\n"
+            "REM Point -i to nnunet_workspace\\imagesTs and edit model/trainer/folds as needed.\n"
+            f"\"{nnunet_binary}\" -i %CD%\\nnunet_workspace\\imagesTs -o %CD%\\nnunet_prediction -f all\n"
         )
     else:
         commands["run_nnunet_inference_example"] = (
@@ -306,6 +306,19 @@ def _build_command_templates(case_name: str, modality: str, runtime: Dict[str, o
             "REM nnU-Net CLI was not detected. Install nnUNetv2_predict in an external Python environment first.\n"
             f"REM Expected input image: {image_name}\n"
             f"REM Optional ground-truth labelmap: {label_name}\n"
+        )
+
+    if tools.get("python"):
+        commands["run_vista3d_example"] = (
+            "@echo off\n"
+            "REM Prepare a dedicated external MONAI/VISTA3D environment first.\n"
+            "REM The vista3d_workspace folder contains image, optional labelmap, and interactive prompt templates.\n"
+            f"\"{tools['python']}\" -c \"print('VISTA3D-ready workspace for {safe_case}:', r'%CD%\\\\vista3d_workspace')\"\n"
+        )
+    else:
+        commands["run_vista3d_example"] = (
+            "@echo off\n"
+            "REM No standalone Python runtime detected. Install Python/conda first, then use vista3d_workspace as the handoff folder.\n"
         )
 
     commands["workspace_notes"] = (

@@ -40,6 +40,9 @@ The project now also includes an `ENT / temporal bone MRI support` workflow for 
 - DICOM import helper and case-bundle export helper in the Slicer UI.
 - `AI runtime advisor` button with per-framework fit summary for the current workstation.
 - `Export AI workspace` button that writes image/label artifacts plus nnU-Net-friendly workspace layout and command templates.
+- `Prepare interactive refinement` button that opens a correction-oriented Slicer workflow on the latest volume/segmentation.
+- Direct launcher buttons for exported `TotalSegmentator`, `nnU-Net`, and `MONAI Label` command templates.
+- `VISTA3D-ready` workspace export with prompt-template scaffolding.
 - Open-source stack check with local runtime profile for Torch, MONAI, SimpleITK, and NVIDIA GPU readiness.
 - Shared core helpers for presets and report naming.
 
@@ -120,6 +123,7 @@ The `Export AI workspace` action now also prepares:
 - `nnunet_workspace/labelsTs/<case>.nii.gz` when labels exist
 - `nnunet_workspace/dataset.json`
 - starter `.cmd` templates for `TotalSegmentator`, `MONAI Label`, and `nnU-Net`
+- `vista3d_workspace/` with image, optional labelmap, and prompt-template JSON
 
 This is intentionally template-driven and conservative. The current implementation favors reproducible wording over free-form generative text.
 

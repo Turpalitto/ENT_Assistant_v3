@@ -34,6 +34,7 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.lastVolumeNodeId = None
         self.lastSegmentationNodeId = None
         self.lastResult = None
+        self.lastAiWorkspaceDir = None
 
         title = qt.QLabel(
             "<h2>ENT Assistant v3</h2>"
@@ -175,7 +176,25 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.exportAiWorkspaceBtn = qt.QPushButton("Export AI workspace")
         self.exportAiWorkspaceBtn.clicked.connect(self.exportAiWorkspace)
         aiWorkflowButtons.addWidget(self.exportAiWorkspaceBtn)
+        self.refineBtn = qt.QPushButton("Prepare interactive refinement")
+        self.refineBtn.clicked.connect(self.prepareInteractiveRefinement)
+        aiWorkflowButtons.addWidget(self.refineBtn)
         layout.addLayout(aiWorkflowButtons)
+
+        launcherButtons = qt.QHBoxLayout()
+        self.launchTotalSegBtn = qt.QPushButton("Launch TotalSegmentator")
+        self.launchTotalSegBtn.clicked.connect(lambda: self.launchWorkspaceCommand("run_totalsegmentator_example"))
+        launcherButtons.addWidget(self.launchTotalSegBtn)
+        self.launchNnUNetBtn = qt.QPushButton("Launch nnU-Net")
+        self.launchNnUNetBtn.clicked.connect(lambda: self.launchWorkspaceCommand("run_nnunet_inference_example"))
+        launcherButtons.addWidget(self.launchNnUNetBtn)
+        self.launchMonaiBtn = qt.QPushButton("Launch MONAI Label")
+        self.launchMonaiBtn.clicked.connect(lambda: self.launchWorkspaceCommand("run_monailabel_example"))
+        launcherButtons.addWidget(self.launchMonaiBtn)
+        self.launchVistaBtn = qt.QPushButton("VISTA3D-ready export")
+        self.launchVistaBtn.clicked.connect(lambda: self.launchWorkspaceCommand("run_vista3d_example"))
+        launcherButtons.addWidget(self.launchVistaBtn)
+        layout.addLayout(launcherButtons)
 
         viewButtons = qt.QHBoxLayout()
         self.sinus3dBtn = qt.QPushButton("Prepare 3D sinus view")
@@ -400,11 +419,44 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             workflow_path = os.path.abspath(os.path.join(MODULE_DIR, "slicer_workflow.py"))
             module = self._load_python_module("ent_slicer_workflow_runtime_ai_export", workflow_path)
             result = module.export_ai_workspace(self.lastResult, folder)
+            self.lastAiWorkspaceDir = result.get("directory")
             self.appendOutput(f"AI workspace exported: {result.get('directory')}")
             if result.get("workspaceMeta"):
                 self.appendOutput(f"AI manifest: {(result.get('workspaceMeta') or {}).get('manifestPath')}")
+            if result.get("nnunetWorkspace"):
+                self.appendOutput(f"nnU-Net workspace: {(result.get('nnunetWorkspace') or {}).get('directory')}")
+            if result.get("vista3dWorkspace"):
+                self.appendOutput(f"VISTA3D workspace: {(result.get('vista3dWorkspace') or {}).get('directory')}")
         except Exception as error:
             self.output.setText(f"AI workspace export error:\n{error}")
+
+    def prepareInteractiveRefinement(self):
+        try:
+            if not self.lastVolumeNodeId or not self.lastSegmentationNodeId:
+                self.output.setText("Run an analysis first so there is a volume and segmentation to refine.")
+                return
+            volume_node = slicer.mrmlScene.GetNodeByID(self.lastVolumeNodeId)
+            segmentation_node = slicer.mrmlScene.GetNodeByID(self.lastSegmentationNodeId)
+            refinement_path = os.path.abspath(os.path.join(MODULE_DIR, "interactive_refinement.py"))
+            module = self._load_python_module("ent_interactive_refinement_runtime", refinement_path)
+            result = module.prepare_interactive_refinement(volume_node, segmentation_node, self.lastResult or {})
+            self.appendOutput("Interactive refinement prepared.")
+            self.appendOutput(result.get("summary", ""))
+        except Exception as error:
+            self.output.setText(f"Interactive refinement error:\n{error}")
+
+    def launchWorkspaceCommand(self, command_name):
+        try:
+            if not self.lastAiWorkspaceDir:
+                self.output.setText("Export an AI workspace first, then launch an external backend from that workspace.")
+                return
+            workflow_path = os.path.abspath(os.path.join(MODULE_DIR, "slicer_workflow.py"))
+            module = self._load_python_module("ent_slicer_workflow_runtime_launch", workflow_path)
+            result = module.launch_workspace_command(self.lastAiWorkspaceDir, command_name)
+            self.appendOutput(f"Launcher started: {result.get('commandName')}")
+            self.appendOutput(f"Command file: {result.get('commandPath')}")
+        except Exception as error:
+            self.output.setText(f"Launcher error:\n{error}")
 
     def runDevScript(self):
         try:

@@ -104,6 +104,13 @@ def export_ai_workspace(result: Dict[str, object], target_directory: str) -> Dic
         image_path=str(image_path),
         labelmap_path=labelmap_path,
     )
+    vista3d_paths = _prepare_vista3d_workspace(
+        target_dir,
+        case_name=result.get("volumeName") or volume_node.GetName(),
+        image_path=str(image_path),
+        labelmap_path=labelmap_path,
+        result=result,
+    )
     advisor = inspect_local_ai_runtimes()
     workspace_meta = write_ai_workspace_bundle(
         str(target_dir),
@@ -123,8 +130,23 @@ def export_ai_workspace(result: Dict[str, object], target_directory: str) -> Dic
         "segmentationPath": segmentation_path,
         "labelmapPath": labelmap_path,
         "nnunetWorkspace": nnunet_paths,
+        "vista3dWorkspace": vista3d_paths,
         "runtimeAdvisor": advisor,
         "workspaceMeta": workspace_meta,
+    }
+
+
+def launch_workspace_command(target_directory: str, command_name: str) -> Dict[str, object]:
+    target_dir = Path(target_directory)
+    command_path = target_dir / f"{command_name}.cmd"
+    if not command_path.exists():
+        raise RuntimeError(f"Workspace command file was not found: {command_path}")
+    process = slicer.util.launchConsoleProcess(["cmd.exe", "/c", str(command_path)])
+    return {
+        "directory": str(target_dir),
+        "commandName": command_name,
+        "commandPath": str(command_path),
+        "pid": getattr(process, "pid", None),
     }
 
 
@@ -205,6 +227,61 @@ def _prepare_nnunet_workspace(
         "labelTestPath": str(nnunet_label) if nnunet_label else None,
         "datasetJsonPath": str(dataset_json),
     }
+
+
+def _prepare_vista3d_workspace(
+    target_dir: Path,
+    *,
+    case_name: str,
+    image_path: str,
+    labelmap_path: Optional[str],
+    result: Dict[str, object],
+) -> Dict[str, object]:
+    vista_dir = target_dir / "vista3d_workspace"
+    vista_dir.mkdir(parents=True, exist_ok=True)
+    image_dst = vista_dir / "image.nii.gz"
+    shutil.copy2(image_path, image_dst)
+    label_dst = None
+    if labelmap_path and Path(labelmap_path).exists():
+        label_dst = vista_dir / "labelmap.nii.gz"
+        shutil.copy2(labelmap_path, label_dst)
+    prompts_path = vista_dir / "prompts_template.json"
+    prompts_path.write_text(json.dumps(_build_vista3d_prompt_template(case_name, result), indent=2, ensure_ascii=False), encoding="utf-8")
+    return {
+        "directory": str(vista_dir),
+        "imagePath": str(image_dst),
+        "labelmapPath": str(label_dst) if label_dst else None,
+        "promptsPath": str(prompts_path),
+    }
+
+
+def _build_vista3d_prompt_template(case_name: str, result: Dict[str, object]) -> Dict[str, object]:
+    report = result.get("sinusReport") or result.get("mriReport") or {}
+    targets = []
+    for finding in (report.get("findingRows") or [])[:10]:
+        structure = str(finding.get("structure", "")).strip()
+        if not structure:
+            continue
+        targets.append(
+            {
+                "name": structure,
+                "positive_points_ijk": [],
+                "negative_points_ijk": [],
+                "bounding_box_ijk": [],
+                "notes": str(finding.get("details", "")),
+            }
+        )
+    if not targets:
+        targets.append(
+            {
+                "name": "region_of_interest",
+                "positive_points_ijk": [],
+                "negative_points_ijk": [],
+                "bounding_box_ijk": [],
+                "notes": "Fill with VISTA3D-style interactive prompts.",
+            }
+        )
+    return {"case": case_name, "targets": targets}
 
 
 def _sanitize_case_id(value: str) -> str:
