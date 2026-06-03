@@ -103,6 +103,7 @@ The newer `Export AI workspace` path goes further and prepares a local handoff b
 - a starter `dataset.json`
 - example `.cmd` launchers for `TotalSegmentator`, `MONAI Label`, and `nnU-Net`
 - a `vista3d_workspace` folder with prompt-template scaffolding
+- an `env_setup` folder with Windows-first setup scripts for a standalone AI Python environment
 
 ## Interactive refinement layer
 
@@ -114,6 +115,23 @@ The module now also has a dedicated `Prepare interactive refinement` action that
 - builds a refinement checklist from QC items and structured findings
 
 This is intended as the bridge between automated analysis and clinician correction before recomputing the final report.
+
+## Round-trip workflow
+
+The workspace/export layer now supports a more complete round-trip:
+
+1. Analyze in Slicer
+2. Export AI workspace
+3. Run external backend from generated launcher scripts
+4. Import round-trip results back into Slicer
+5. Review or refine
+6. Recompute the report from the updated segmentation
+
+This currently supports:
+
+- `nnU-Net` multi-label prediction import
+- `TotalSegmentator` folder import
+- generic exported labelmap import
 
 ## MRI support note
 

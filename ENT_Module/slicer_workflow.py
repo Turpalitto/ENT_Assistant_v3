@@ -9,6 +9,7 @@ import slicer
 import vtk
 
 from ENT_Module.ai_runtime_advisor import build_nnunet_dataset_stub, inspect_local_ai_runtimes, write_ai_workspace_bundle
+from ENT_Module.env_setup import generate_external_env_setup
 
 
 def import_dicom_folder(folder_path: str, load_patient: bool = True) -> Dict[str, object]:
@@ -112,6 +113,7 @@ def export_ai_workspace(result: Dict[str, object], target_directory: str) -> Dic
         result=result,
     )
     advisor = inspect_local_ai_runtimes()
+    env_setup = generate_external_env_setup(str(target_dir / "env_setup"))
     workspace_meta = write_ai_workspace_bundle(
         str(target_dir),
         case_name=result.get("volumeName") or volume_node.GetName(),
@@ -131,6 +133,7 @@ def export_ai_workspace(result: Dict[str, object], target_directory: str) -> Dic
         "labelmapPath": labelmap_path,
         "nnunetWorkspace": nnunet_paths,
         "vista3dWorkspace": vista3d_paths,
+        "envSetup": env_setup,
         "runtimeAdvisor": advisor,
         "workspaceMeta": workspace_meta,
     }
@@ -148,6 +151,12 @@ def launch_workspace_command(target_directory: str, command_name: str) -> Dict[s
         "commandPath": str(command_path),
         "pid": getattr(process, "pid", None),
     }
+
+
+def import_roundtrip_workspace(workspace_directory: str, volume_node) -> Dict[str, object]:
+    from ENT_Module.roundtrip_import import import_roundtrip_results
+
+    return import_roundtrip_results(workspace_directory, volume_node)
 
 
 def _collect_case_paths(result: Dict[str, object]) -> List[str]:

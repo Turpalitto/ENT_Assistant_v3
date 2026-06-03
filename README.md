@@ -43,6 +43,8 @@ The project now also includes an `ENT / temporal bone MRI support` workflow for 
 - `Prepare interactive refinement` button that opens a correction-oriented Slicer workflow on the latest volume/segmentation.
 - Direct launcher buttons for exported `TotalSegmentator`, `nnU-Net`, and `MONAI Label` command templates.
 - `VISTA3D-ready` workspace export with prompt-template scaffolding.
+- Auto-generated external environment setup scripts for Windows AI runtimes.
+- Round-trip import button to bring external predictions back into Slicer as segmentations.
 - Open-source stack check with local runtime profile for Torch, MONAI, SimpleITK, and NVIDIA GPU readiness.
 - Shared core helpers for presets and report naming.
 
@@ -124,6 +126,7 @@ The `Export AI workspace` action now also prepares:
 - `nnunet_workspace/dataset.json`
 - starter `.cmd` templates for `TotalSegmentator`, `MONAI Label`, and `nnU-Net`
 - `vista3d_workspace/` with image, optional labelmap, and prompt-template JSON
+- `env_setup/` with Windows setup scripts for Python, venv, PyTorch, TotalSegmentator, MONAI Label, and nnU-Net
 
 This is intentionally template-driven and conservative. The current implementation favors reproducible wording over free-form generative text.
 

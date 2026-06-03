@@ -194,6 +194,9 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.launchVistaBtn = qt.QPushButton("VISTA3D-ready export")
         self.launchVistaBtn.clicked.connect(lambda: self.launchWorkspaceCommand("run_vista3d_example"))
         launcherButtons.addWidget(self.launchVistaBtn)
+        self.importRoundTripBtn = qt.QPushButton("Import round-trip results")
+        self.importRoundTripBtn.clicked.connect(self.importRoundTripResults)
+        launcherButtons.addWidget(self.importRoundTripBtn)
         layout.addLayout(launcherButtons)
 
         viewButtons = qt.QHBoxLayout()
@@ -427,6 +430,8 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                 self.appendOutput(f"nnU-Net workspace: {(result.get('nnunetWorkspace') or {}).get('directory')}")
             if result.get("vista3dWorkspace"):
                 self.appendOutput(f"VISTA3D workspace: {(result.get('vista3dWorkspace') or {}).get('directory')}")
+            if result.get("envSetup"):
+                self.appendOutput(f"Env setup scripts: {(result.get('envSetup') or {}).get('directory')}")
         except Exception as error:
             self.output.setText(f"AI workspace export error:\n{error}")
 
@@ -457,6 +462,24 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             self.appendOutput(f"Command file: {result.get('commandPath')}")
         except Exception as error:
             self.output.setText(f"Launcher error:\n{error}")
+
+    def importRoundTripResults(self):
+        try:
+            if not self.lastAiWorkspaceDir:
+                self.output.setText("Export an AI workspace first, or set up a workspace before importing round-trip results.")
+                return
+            if not self.lastVolumeNodeId:
+                self.output.setText("Run an analysis first so a reference volume is available for round-trip import.")
+                return
+            volume_node = slicer.mrmlScene.GetNodeByID(self.lastVolumeNodeId)
+            workflow_path = os.path.abspath(os.path.join(MODULE_DIR, "slicer_workflow.py"))
+            module = self._load_python_module("ent_slicer_workflow_runtime_roundtrip", workflow_path)
+            result = module.import_roundtrip_workspace(self.lastAiWorkspaceDir, volume_node)
+            self.lastSegmentationNodeId = result.get("segmentationNodeId")
+            self.appendOutput(f"Round-trip import completed from: {result.get('source')}")
+            self.appendOutput(f"Imported segmentation: {result.get('segmentationNodeName')}")
+        except Exception as error:
+            self.output.setText(f"Round-trip import error:\n{error}")
 
     def runDevScript(self):
         try:
