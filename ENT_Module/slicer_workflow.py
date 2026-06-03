@@ -10,6 +10,7 @@ import vtk
 
 from ENT_Module.ai_runtime_advisor import build_nnunet_dataset_stub, inspect_local_ai_runtimes, write_ai_workspace_bundle
 from ENT_Module.env_setup import generate_external_env_setup
+from ENT_Module.interactive_refinement import export_refinement_package
 
 
 def import_dicom_folder(folder_path: str, load_patient: bool = True) -> Dict[str, object]:
@@ -112,6 +113,7 @@ def export_ai_workspace(result: Dict[str, object], target_directory: str) -> Dic
         labelmap_path=labelmap_path,
         result=result,
     )
+    refinement_paths = export_refinement_package(result, str(target_dir / "interactive_refinement"))
     advisor = inspect_local_ai_runtimes()
     env_setup = generate_external_env_setup(str(target_dir / "env_setup"))
     workspace_meta = write_ai_workspace_bundle(
@@ -133,6 +135,7 @@ def export_ai_workspace(result: Dict[str, object], target_directory: str) -> Dic
         "labelmapPath": labelmap_path,
         "nnunetWorkspace": nnunet_paths,
         "vista3dWorkspace": vista3d_paths,
+        "interactiveRefinement": refinement_paths,
         "envSetup": env_setup,
         "runtimeAdvisor": advisor,
         "workspaceMeta": workspace_meta,

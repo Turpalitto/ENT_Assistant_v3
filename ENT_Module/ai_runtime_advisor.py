@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -9,6 +10,7 @@ from typing import Dict, List, Optional
 
 def inspect_local_ai_runtimes() -> Dict[str, object]:
     gpu = _inspect_gpu()
+    external_envs = detect_external_envs()
     tools = {
         "TotalSegmentator": _which("TotalSegmentator") or _which("totalsegmentator"),
         "monailabel": _which("monailabel"),
@@ -17,24 +19,25 @@ def inspect_local_ai_runtimes() -> Dict[str, object]:
         "python": _probe_python(),
         "PythonSlicer": _which("PythonSlicer"),
     }
+    resolved_tools = resolve_tools_with_envs(tools, external_envs)
 
     preferred_ct_backend = "threshold"
-    if tools["TotalSegmentator"]:
+    if resolved_tools["TotalSegmentator"]:
         preferred_ct_backend = "TotalSegmentator"
-    elif tools["nnUNetv2_predict"] or tools["nnUNet_predict"]:
+    elif resolved_tools["nnUNetv2_predict"] or resolved_tools["nnUNet_predict"]:
         preferred_ct_backend = "nnU-Net"
 
     interactive_backend = "SegmentEditorExtraEffects / manual refinement"
-    if tools["monailabel"]:
+    if resolved_tools["monailabel"]:
         interactive_backend = "MONAI Label"
 
     workspace_recommendation = build_workspace_recommendation(
         gpu=gpu,
-        tools=tools,
+        tools=resolved_tools,
         preferred_ct_backend=preferred_ct_backend,
         interactive_backend=interactive_backend,
     )
-    framework_fit = build_framework_fit_report(gpu=gpu, tools=tools)
+    framework_fit = build_framework_fit_report(gpu=gpu, tools=resolved_tools)
 
     lines = ["AI runtime advisor:"]
     lines.append(f"- Preferred CT backend: {preferred_ct_backend}")
@@ -43,8 +46,13 @@ def inspect_local_ai_runtimes() -> Dict[str, object]:
         lines.append(f"- GPU: {gpu.get('name')} | VRAM ~{gpu.get('memoryMb')} MB | CUDA {gpu.get('cudaVersion') or 'n/a'}")
     else:
         lines.append("- GPU: not detected through nvidia-smi")
-    for tool_name, tool_value in tools.items():
+    for tool_name, tool_value in resolved_tools.items():
         lines.append(f"- {tool_name}: {'OK' if tool_value else 'MISSING'}{f' | {tool_value}' if tool_value else ''}")
+    if external_envs:
+        lines.append("")
+        lines.append("Detected external AI environments:")
+        for env_row in external_envs:
+            lines.append(f"- {env_row['name']}: {env_row['python']} | tools={', '.join(env_row['availableTools']) or 'none'}")
     lines.append("")
     lines.append("Framework fit for this workstation:")
     for row in framework_fit:
@@ -54,7 +62,9 @@ def inspect_local_ai_runtimes() -> Dict[str, object]:
 
     return {
         "gpu": gpu,
-        "tools": tools,
+        "tools": resolved_tools,
+        "pathTools": tools,
+        "externalEnvs": external_envs,
         "preferredCtBackend": preferred_ct_backend,
         "interactiveBackend": interactive_backend,
         "frameworkFit": framework_fit,
@@ -154,6 +164,44 @@ def build_framework_fit_report(*, gpu: Dict[str, object], tools: Dict[str, Optio
         },
     ]
     return rows
+
+
+def detect_external_envs() -> List[Dict[str, object]]:
+    candidates: List[Path] = []
+    home = Path.home()
+    for name in ["ent_ai_env", ".venv", "venv", "monai_env", "nnunet_env"]:
+        candidates.append(home / name)
+        candidates.append(Path("C:/entv1") / name)
+    seen = set()
+    envs: List[Dict[str, object]] = []
+    for env_dir in candidates:
+        env_dir = env_dir.resolve()
+        if env_dir in seen:
+            continue
+        seen.add(env_dir)
+        python_exe = env_dir / "Scripts" / "python.exe"
+        if not python_exe.exists():
+            continue
+        envs.append(_inspect_env(env_dir, python_exe))
+    return envs
+
+
+def resolve_tools_with_envs(tools: Dict[str, Optional[str]], envs: List[Dict[str, object]]) -> Dict[str, Optional[str]]:
+    resolved = dict(tools)
+    for env in envs:
+        scripts_dir = str(Path(env["python"]).parent)
+        mapping = {
+            "TotalSegmentator": str(Path(scripts_dir) / "TotalSegmentator.exe"),
+            "monailabel": str(Path(scripts_dir) / "monailabel.exe"),
+            "nnUNetv2_predict": str(Path(scripts_dir) / "nnUNetv2_predict.exe"),
+            "nnUNet_predict": str(Path(scripts_dir) / "nnUNet_predict.exe"),
+        }
+        for key, candidate in mapping.items():
+            if not resolved.get(key) and Path(candidate).exists():
+                resolved[key] = candidate
+        if not resolved.get("python"):
+            resolved["python"] = env["python"]
+    return resolved
 
 
 def write_ai_workspace_bundle(
@@ -386,3 +434,17 @@ def _inspect_gpu() -> Dict[str, object]:
 def _sanitize_name(value: str) -> str:
     cleaned = "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in value.strip())
     return cleaned.strip("._") or "case"
+
+
+def _inspect_env(env_dir: Path, python_exe: Path) -> Dict[str, object]:
+    available_tools: List[str] = []
+    scripts_dir = python_exe.parent
+    for tool_name in ["TotalSegmentator.exe", "monailabel.exe", "nnUNetv2_predict.exe", "nnUNet_predict.exe"]:
+        if (scripts_dir / tool_name).exists():
+            available_tools.append(tool_name.replace(".exe", ""))
+    return {
+        "name": env_dir.name,
+        "directory": str(env_dir),
+        "python": str(python_exe),
+        "availableTools": available_tools,
+    }

@@ -31,12 +31,18 @@ def export_refinement_package(result: Dict[str, object], target_directory: str) 
     target_dir.mkdir(parents=True, exist_ok=True)
     checklist = build_refinement_checklist(result)
     prompt_templates = build_prompt_templates(result)
+    monai_prompts = build_monailabel_prompt_payload(result)
+    vista_prompts = build_vista3d_prompt_payload(result)
 
     checklist_path = target_dir / "refinement_checklist.json"
     checklist_path.write_text(json.dumps(checklist, indent=2, ensure_ascii=False), encoding="utf-8")
 
     prompts_path = target_dir / "interactive_prompt_templates.json"
     prompts_path.write_text(json.dumps(prompt_templates, indent=2, ensure_ascii=False), encoding="utf-8")
+    monai_prompts_path = target_dir / "monailabel_prompt_payload.json"
+    monai_prompts_path.write_text(json.dumps(monai_prompts, indent=2, ensure_ascii=False), encoding="utf-8")
+    vista_prompts_path = target_dir / "vista3d_prompt_payload.json"
+    vista_prompts_path.write_text(json.dumps(vista_prompts, indent=2, ensure_ascii=False), encoding="utf-8")
 
     instructions_path = target_dir / "REFINEMENT_NOTES.txt"
     instructions_path.write_text(_build_refinement_notes(checklist), encoding="utf-8")
@@ -45,6 +51,8 @@ def export_refinement_package(result: Dict[str, object], target_directory: str) 
         "directory": str(target_dir),
         "checklistPath": str(checklist_path),
         "promptTemplatesPath": str(prompts_path),
+        "monaiPromptPath": str(monai_prompts_path),
+        "vistaPromptPath": str(vista_prompts_path),
         "notesPath": str(instructions_path),
     }
 
@@ -110,6 +118,41 @@ def build_prompt_templates(result: Dict[str, object]) -> Dict[str, object]:
         "case": result.get("volumeName"),
         "preset": result.get("preset"),
         "targets": targets,
+    }
+
+
+def build_monailabel_prompt_payload(result: Dict[str, object]) -> Dict[str, object]:
+    generic = build_prompt_templates(result)
+    return {
+        "case": generic.get("case"),
+        "preset": generic.get("preset"),
+        "prompts": [
+            {
+                "label": row.get("name"),
+                "foreground": row.get("positivePoints", []),
+                "background": row.get("negativePoints", []),
+                "boxes": row.get("boxes", []),
+                "notes": row.get("notes", ""),
+            }
+            for row in generic.get("targets", [])
+        ],
+    }
+
+
+def build_vista3d_prompt_payload(result: Dict[str, object]) -> Dict[str, object]:
+    generic = build_prompt_templates(result)
+    return {
+        "case": generic.get("case"),
+        "targets": [
+            {
+                "name": row.get("name"),
+                "positive_points_ijk": row.get("positivePoints", []),
+                "negative_points_ijk": row.get("negativePoints", []),
+                "bounding_box_ijk": row.get("boxes", []),
+                "notes": row.get("notes", ""),
+            }
+            for row in generic.get("targets", [])
+        ],
     }
 
 

@@ -1,3 +1,16 @@
 __pycache__/
 *.log
 *.pyc
+artifacts/
+data/
+exports/
+reports/
+dicom_import_probe.json
+dicom_load_probe.json
+ENT_Module/*.nrrd
+ENT_Module/*.mrml
+ENT_Module/*.png
+ENT_Module/*ColorTable*.csv
+ENT_Module/Isodose_ColorTable_DefaultCopy.csv
+ENT_Module/CT-Bone.vp.json
+ENT_Module/*.seg.nrrd

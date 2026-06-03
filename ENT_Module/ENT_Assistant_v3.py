@@ -245,28 +245,7 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         try:
             pipeline_path = os.path.abspath(os.path.join(REPO_ROOT, "slicer_scripts", "ent_analysis_pipeline.py"))
             module = self._load_python_module("ent_analysis_pipeline_runtime", pipeline_path)
-            config = AnalysisConfig(
-                preset_key=self.getSelectedPresetKey(),
-                batch_mode=self.batchModeCombo.currentText,
-                use_totalsegmentator=self.useTotalSegmentator.checked,
-                save_report=self.saveReportCheck.checked,
-                report_mode=self.reportModeCombo.currentText,
-                export_html_report=self.exportHtmlReportCheck.checked,
-                generate_preop_checklist=self.preopChecklistCheck.checked,
-                auto_capture_screenshots=self.autoScreenshotsCheck.checked,
-                export_results=self.exportResultsCheck.checked,
-                export_seg_nrrd=self.exportSegNrrdCheck.checked,
-                export_labelmap_nifti=self.exportLabelmapCheck.checked,
-                export_surface_models=self.exportSurfaceCheck.checked,
-                export_rtstruct=self.exportRtstructCheck.checked,
-                ai_quality=self.aiQualityCombo.currentText,
-                use_cpu=self.useCpuCheck.checked,
-                robust_crop=self.robustCropCheck.checked,
-                bone_threshold_min=self.boneMinSpin.value,
-                bone_threshold_max=self.boneMaxSpin.value,
-                air_threshold_min=self.airMinSpin.value,
-                air_threshold_max=self.airMaxSpin.value,
-            )
+            config = self._buildAnalysisConfig()
 
             self.output.clear()
             self.populateFindingsTable([])
@@ -329,18 +308,7 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                 return
             pipeline_path = os.path.abspath(os.path.join(REPO_ROOT, "slicer_scripts", "ent_analysis_pipeline.py"))
             module = self._load_python_module("ent_analysis_pipeline_runtime_recompute", pipeline_path)
-            config = AnalysisConfig(
-                preset_key=self.getSelectedPresetKey(),
-                batch_mode="active",
-                use_totalsegmentator=False,
-                save_report=self.saveReportCheck.checked,
-                report_mode=self.reportModeCombo.currentText,
-                export_html_report=self.exportHtmlReportCheck.checked,
-                generate_preop_checklist=self.preopChecklistCheck.checked,
-                auto_capture_screenshots=self.autoScreenshotsCheck.checked,
-                export_results=False,
-                export_rtstruct=False,
-            )
+            config = self._buildRecomputeConfig()
             self.output.clear()
             result = module.recompute_ent_analysis(self.lastVolumeNodeId, self.lastSegmentationNodeId, config, log_callback=self.appendOutput)
             self.lastResult = result
@@ -430,6 +398,8 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                 self.appendOutput(f"nnU-Net workspace: {(result.get('nnunetWorkspace') or {}).get('directory')}")
             if result.get("vista3dWorkspace"):
                 self.appendOutput(f"VISTA3D workspace: {(result.get('vista3dWorkspace') or {}).get('directory')}")
+            if result.get("interactiveRefinement"):
+                self.appendOutput(f"Interactive prompts: {(result.get('interactiveRefinement') or {}).get('directory')}")
             if result.get("envSetup"):
                 self.appendOutput(f"Env setup scripts: {(result.get('envSetup') or {}).get('directory')}")
         except Exception as error:
@@ -478,6 +448,7 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             self.lastSegmentationNodeId = result.get("segmentationNodeId")
             self.appendOutput(f"Round-trip import completed from: {result.get('source')}")
             self.appendOutput(f"Imported segmentation: {result.get('segmentationNodeName')}")
+            self._autoRecomputeAfterRoundTrip()
         except Exception as error:
             self.output.setText(f"Round-trip import error:\n{error}")
 
@@ -554,6 +525,61 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
 
     def getSelectedPresetKey(self):
         return self.presetKeyByTitle.get(self.presetCombo.currentText, "ent_threshold")
+
+    def _buildAnalysisConfig(self):
+        return AnalysisConfig(
+            preset_key=self.getSelectedPresetKey(),
+            batch_mode=self.batchModeCombo.currentText,
+            use_totalsegmentator=self.useTotalSegmentator.checked,
+            save_report=self.saveReportCheck.checked,
+            report_mode=self.reportModeCombo.currentText,
+            export_html_report=self.exportHtmlReportCheck.checked,
+            generate_preop_checklist=self.preopChecklistCheck.checked,
+            auto_capture_screenshots=self.autoScreenshotsCheck.checked,
+            export_results=self.exportResultsCheck.checked,
+            export_seg_nrrd=self.exportSegNrrdCheck.checked,
+            export_labelmap_nifti=self.exportLabelmapCheck.checked,
+            export_surface_models=self.exportSurfaceCheck.checked,
+            export_rtstruct=self.exportRtstructCheck.checked,
+            ai_quality=self.aiQualityCombo.currentText,
+            use_cpu=self.useCpuCheck.checked,
+            robust_crop=self.robustCropCheck.checked,
+            bone_threshold_min=self.boneMinSpin.value,
+            bone_threshold_max=self.boneMaxSpin.value,
+            air_threshold_min=self.airMinSpin.value,
+            air_threshold_max=self.airMaxSpin.value,
+        )
+
+    def _buildRecomputeConfig(self):
+        return AnalysisConfig(
+            preset_key=self.getSelectedPresetKey(),
+            batch_mode="active",
+            use_totalsegmentator=False,
+            save_report=self.saveReportCheck.checked,
+            report_mode=self.reportModeCombo.currentText,
+            export_html_report=self.exportHtmlReportCheck.checked,
+            generate_preop_checklist=self.preopChecklistCheck.checked,
+            auto_capture_screenshots=self.autoScreenshotsCheck.checked,
+            export_results=False,
+            export_rtstruct=False,
+        )
+
+    def _autoRecomputeAfterRoundTrip(self):
+        if not self.lastVolumeNodeId or not self.lastSegmentationNodeId:
+            return
+        try:
+            pipeline_path = os.path.abspath(os.path.join(REPO_ROOT, "slicer_scripts", "ent_analysis_pipeline.py"))
+            module = self._load_python_module("ent_analysis_pipeline_runtime_roundtrip_recompute", pipeline_path)
+            config = self._buildRecomputeConfig()
+            result = module.recompute_ent_analysis(self.lastVolumeNodeId, self.lastSegmentationNodeId, config, log_callback=self.appendOutput)
+            self.lastResult = result
+            self.appendOutput(f"Round-trip recompute completed: {result.get('preset')}")
+            if result.get("reportPath"):
+                self.appendOutput(f"Report: {result.get('reportPath')}")
+            if result.get("htmlReportPath"):
+                self.appendOutput(f"HTML report: {result.get('htmlReportPath')}")
+        except Exception as error:
+            self.appendOutput(f"Round-trip recompute warning: {error}")
 
     def appendOutput(self, message):
         existing = self.output.toPlainText()

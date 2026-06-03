@@ -1,6 +1,11 @@
 import unittest
 
-from ENT_Module.interactive_refinement import build_prompt_templates, build_refinement_checklist
+from ENT_Module.interactive_refinement import (
+    build_monailabel_prompt_payload,
+    build_prompt_templates,
+    build_refinement_checklist,
+    build_vista3d_prompt_payload,
+)
 
 
 class InteractiveRefinementTests(unittest.TestCase):
@@ -33,6 +38,21 @@ class InteractiveRefinementTests(unittest.TestCase):
         self.assertEqual(payload["case"], "Case1")
         self.assertTrue(payload["targets"])
         self.assertEqual(payload["targets"][0]["name"], "internal_auditory_canal")
+
+    def test_build_monai_and_vista_payloads(self):
+        result = {
+            "volumeName": "Case1",
+            "preset": "CT PNS",
+            "sinusReport": {
+                "findingRows": [
+                    {"structure": "sinus_maxillary_left", "details": "Refine this region."},
+                ]
+            },
+        }
+        monai = build_monailabel_prompt_payload(result)
+        vista = build_vista3d_prompt_payload(result)
+        self.assertEqual(monai["prompts"][0]["label"], "sinus_maxillary_left")
+        self.assertEqual(vista["targets"][0]["name"], "sinus_maxillary_left")
 
 
 if __name__ == "__main__":

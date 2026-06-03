@@ -4,6 +4,7 @@ from ENT_Module.ai_runtime_advisor import (
     build_framework_fit_report,
     build_nnunet_dataset_stub,
     build_workspace_recommendation,
+    resolve_tools_with_envs,
 )
 
 
@@ -44,6 +45,19 @@ class AiRuntimeAdvisorTests(unittest.TestCase):
         self.assertEqual(names["3D Slicer"]["status"], "ready")
         self.assertEqual(names["TotalSegmentator"]["status"], "ready")
         self.assertIn(names["VISTA3D"]["status"], {"setup_needed", "ready"})
+
+    def test_resolve_tools_with_envs(self):
+        resolved = resolve_tools_with_envs(
+            {"python": None, "TotalSegmentator": None, "monailabel": None, "nnUNetv2_predict": None, "nnUNet_predict": None},
+            [
+                {
+                    "name": "env1",
+                    "python": "C:\\env1\\Scripts\\python.exe",
+                    "availableTools": ["TotalSegmentator", "monailabel"],
+                }
+            ],
+        )
+        self.assertEqual(resolved["python"], "C:\\env1\\Scripts\\python.exe")
 
 
 if __name__ == "__main__":
