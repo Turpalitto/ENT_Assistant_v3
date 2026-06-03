@@ -433,6 +433,14 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             result = module.launch_workspace_command(self.lastAiWorkspaceDir, command_name)
             self.appendOutput(f"Launcher started: {result.get('commandName')}")
             self.appendOutput(f"Command file: {result.get('commandPath')}")
+            if result.get("launchMode"):
+                self.appendOutput(f"Launch mode: {result.get('launchMode')}")
+            if result.get("pid"):
+                self.appendOutput(f"PID: {result.get('pid')}")
+            if result.get("logPath"):
+                self.appendOutput(f"Launcher log: {result.get('logPath')}")
+            if result.get("warning"):
+                self.appendOutput(f"Launcher warning: {result.get('warning')}")
         except Exception as error:
             self.output.setText(f"Launcher error:\n{error}")
 
@@ -445,6 +453,12 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             module = self._load_python_module("ent_slicer_workflow_runtime_bootstrap", workflow_path)
             result = module.bootstrap_external_env(self.lastAiWorkspaceDir)
             self.appendOutput(f"AI env bootstrap started: {result.get('commandPath')}")
+            if result.get("launchMode"):
+                self.appendOutput(f"Launch mode: {result.get('launchMode')}")
+            if result.get("pid"):
+                self.appendOutput(f"PID: {result.get('pid')}")
+            if result.get("logPath"):
+                self.appendOutput(f"Launcher log: {result.get('logPath')}")
         except Exception as error:
             self.output.setText(f"AI env bootstrap error:\n{error}")
 
@@ -459,10 +473,12 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             volume_node = slicer.mrmlScene.GetNodeByID(self.lastVolumeNodeId)
             workflow_path = os.path.abspath(os.path.join(MODULE_DIR, "slicer_workflow.py"))
             module = self._load_python_module("ent_slicer_workflow_runtime_roundtrip", workflow_path)
+            self.appendOutput("Searching AI workspace for round-trip predictions...")
             result = module.import_roundtrip_workspace(self.lastAiWorkspaceDir, volume_node)
             self.lastSegmentationNodeId = result.get("segmentationNodeId")
             self.appendOutput(f"Round-trip import completed from: {result.get('source')}")
             self.appendOutput(f"Imported segmentation: {result.get('segmentationNodeName')}")
+            self.appendOutput("Auto-recompute started from imported segmentation...")
             self._autoRecomputeAfterRoundTrip()
         except Exception as error:
             self.output.setText(f"Round-trip import error:\n{error}")
@@ -593,6 +609,17 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
                 self.appendOutput(f"Report: {result.get('reportPath')}")
             if result.get("htmlReportPath"):
                 self.appendOutput(f"HTML report: {result.get('htmlReportPath')}")
+            sinus_report = result.get("sinusReport")
+            if sinus_report:
+                self.populateFindingsTable(sinus_report.get("findingRows") or [])
+                self.appendOutput("")
+                self.appendOutput(sinus_report.get("reportText", ""))
+            else:
+                mri_report = result.get("mriReport")
+                if mri_report:
+                    self.populateFindingsTable(mri_report.get("findingRows") or [])
+                    self.appendOutput("")
+                    self.appendOutput(mri_report.get("reportText", ""))
         except Exception as error:
             self.appendOutput(f"Round-trip recompute warning: {error}")
 

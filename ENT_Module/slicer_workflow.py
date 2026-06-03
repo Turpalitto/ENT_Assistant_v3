@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-import shutil
 import json
+import os
+import shutil
+import subprocess
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -142,30 +145,28 @@ def export_ai_workspace(result: Dict[str, object], target_directory: str) -> Dic
     }
 
 
-def launch_workspace_command(target_directory: str, command_name: str) -> Dict[str, object]:
+def launch_workspace_command(target_directory: str, command_name: str, *, dry_run: bool = False) -> Dict[str, object]:
     target_dir = Path(target_directory)
     command_path = target_dir / f"{command_name}.cmd"
     if not command_path.exists():
         raise RuntimeError(f"Workspace command file was not found: {command_path}")
-    process = slicer.util.launchConsoleProcess(["cmd.exe", "/c", str(command_path)])
     return {
         "directory": str(target_dir),
         "commandName": command_name,
         "commandPath": str(command_path),
-        "pid": getattr(process, "pid", None),
+        **_start_command_script(command_path, target_dir, dry_run=dry_run),
     }
 
 
-def bootstrap_external_env(target_directory: str) -> Dict[str, object]:
+def bootstrap_external_env(target_directory: str, *, dry_run: bool = False) -> Dict[str, object]:
     target_dir = Path(target_directory)
     command_path = target_dir / "env_setup" / "07_bootstrap_all.cmd"
     if not command_path.exists():
         raise RuntimeError(f"Bootstrap script was not found: {command_path}")
-    process = slicer.util.launchConsoleProcess(["cmd.exe", "/c", str(command_path)])
     return {
         "directory": str(target_dir),
         "commandPath": str(command_path),
-        "pid": getattr(process, "pid", None),
+        **_start_command_script(command_path, target_dir, dry_run=dry_run),
     }
 
 
@@ -252,6 +253,71 @@ def _prepare_nnunet_workspace(
         "labelTestPath": str(nnunet_label) if nnunet_label else None,
         "datasetJsonPath": str(dataset_json),
     }
+
+
+def _start_command_script(command_path: Path, working_directory: Path, *, dry_run: bool = False) -> Dict[str, object]:
+    command_line = ["cmd.exe", "/k", str(command_path)]
+    log_path = working_directory / "launcher_activity.log"
+    _append_launcher_log(
+        log_path,
+        f"Prepared launcher for {command_path.name} in {working_directory}",
+        command_line=command_line,
+        dry_run=dry_run,
+    )
+    if dry_run:
+        return {
+            "pid": None,
+            "launchMode": "dry_run",
+            "commandLine": command_line,
+            "logPath": str(log_path),
+        }
+
+    try:
+        process = subprocess.Popen(
+            command_line,
+            cwd=str(working_directory),
+            creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
+        )
+        _append_launcher_log(
+            log_path,
+            f"Started launcher process pid={getattr(process, 'pid', None)}",
+            command_line=command_line,
+            dry_run=False,
+        )
+        return {
+            "pid": getattr(process, "pid", None),
+            "launchMode": "new_console",
+            "commandLine": command_line,
+            "logPath": str(log_path),
+        }
+    except Exception as error:
+        if hasattr(os, "startfile"):
+            os.startfile(str(command_path))
+            _append_launcher_log(
+                log_path,
+                f"Fallback launch via startfile after subprocess error: {error}",
+                command_line=command_line,
+                dry_run=False,
+            )
+            return {
+                "pid": None,
+                "launchMode": "startfile",
+                "commandLine": command_line,
+                "logPath": str(log_path),
+                "warning": str(error),
+            }
+        raise
+
+
+def _append_launcher_log(log_path: Path, message: str, *, command_line: Optional[List[str]] = None, dry_run: bool = False) -> None:
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    lines = [f"[{timestamp}] {message}"]
+    if command_line:
+        lines.append(f"  command: {' '.join(command_line)}")
+    if dry_run:
+        lines.append("  mode: dry_run")
+    with log_path.open("a", encoding="utf-8") as stream:
+        stream.write("\n".join(lines) + "\n")
 
 
 def _prepare_vista3d_workspace(

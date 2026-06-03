@@ -219,7 +219,11 @@ def _show_segmentation_for_editing(segmentation_node) -> None:
 
 
 def _open_segment_editor(volume_node, segmentation_node) -> None:
-    slicer.util.selectModule("SegmentEditor")
+    try:
+        slicer.util.selectModule("SegmentEditor")
+    except Exception:
+        # Headless or reduced UI sessions may not expose the main window.
+        pass
     editor_widget_container = getattr(slicer.modules, "SegmentEditorWidget", None)
     editor_widget = getattr(editor_widget_container, "editor", None) if editor_widget_container else None
     if editor_widget:
