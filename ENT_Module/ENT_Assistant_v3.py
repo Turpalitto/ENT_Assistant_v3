@@ -194,6 +194,9 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
         self.launchVistaBtn = qt.QPushButton("VISTA3D-ready export")
         self.launchVistaBtn.clicked.connect(lambda: self.launchWorkspaceCommand("run_vista3d_example"))
         launcherButtons.addWidget(self.launchVistaBtn)
+        self.bootstrapEnvBtn = qt.QPushButton("Bootstrap AI env")
+        self.bootstrapEnvBtn.clicked.connect(self.bootstrapExternalEnv)
+        launcherButtons.addWidget(self.bootstrapEnvBtn)
         self.importRoundTripBtn = qt.QPushButton("Import round-trip results")
         self.importRoundTripBtn.clicked.connect(self.importRoundTripResults)
         launcherButtons.addWidget(self.importRoundTripBtn)
@@ -432,6 +435,18 @@ class ENT_Assistant_v3Widget(ScriptedLoadableModuleWidget):
             self.appendOutput(f"Command file: {result.get('commandPath')}")
         except Exception as error:
             self.output.setText(f"Launcher error:\n{error}")
+
+    def bootstrapExternalEnv(self):
+        try:
+            if not self.lastAiWorkspaceDir:
+                self.output.setText("Export an AI workspace first, then bootstrap the external AI environment from that workspace.")
+                return
+            workflow_path = os.path.abspath(os.path.join(MODULE_DIR, "slicer_workflow.py"))
+            module = self._load_python_module("ent_slicer_workflow_runtime_bootstrap", workflow_path)
+            result = module.bootstrap_external_env(self.lastAiWorkspaceDir)
+            self.appendOutput(f"AI env bootstrap started: {result.get('commandPath')}")
+        except Exception as error:
+            self.output.setText(f"AI env bootstrap error:\n{error}")
 
     def importRoundTripResults(self):
         try:

@@ -19,6 +19,7 @@ class EnvSetupTests(unittest.TestCase):
             self.assertTrue(Path(result["files"]["install_python"]).exists())
             self.assertTrue(Path(result["files"]["install_stack"]).exists())
             self.assertTrue(Path(result["files"]["readme"]).exists())
+            self.assertTrue(Path(result["files"]["bootstrap_all"]).exists())
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ def generate_external_env_setup(target_directory: str, env_name: str = "ent_ai_e
         "install_stack": target_dir / "04_install_ent_ai_stack.cmd",
         "activate_env": target_dir / "05_activate_env.cmd",
         "nnunet_env": target_dir / "06_set_nnunet_env.cmd",
+        "bootstrap_all": target_dir / "07_bootstrap_all.cmd",
         "readme": target_dir / "README_ENV_SETUP.txt",
     }
 
@@ -24,6 +25,7 @@ def generate_external_env_setup(target_directory: str, env_name: str = "ent_ai_e
     files["install_stack"].write_text(_install_stack_cmd(env_name), encoding="utf-8")
     files["activate_env"].write_text(_activate_env_cmd(env_name), encoding="utf-8")
     files["nnunet_env"].write_text(_nnunet_env_cmd(env_name), encoding="utf-8")
+    files["bootstrap_all"].write_text(_bootstrap_all_cmd(), encoding="utf-8")
     files["readme"].write_text(_readme_text(env_name), encoding="utf-8")
 
     return {
@@ -135,7 +137,18 @@ def _readme_text(env_name: str) -> str:
             "3. Run 03_install_gpu_torch.cmd",
             "4. Run 04_install_ent_ai_stack.cmd",
             "5. Run 06_set_nnunet_env.cmd inside the exported AI workspace if using nnU-Net",
+            "Or run 07_bootstrap_all.cmd for the default sequence.",
             "",
             "These scripts are templates. Review and adjust them before running on your workstation.",
         ]
+    )
+
+
+def _bootstrap_all_cmd() -> str:
+    return (
+        "@echo off\n"
+        "call 01_install_python.cmd\n"
+        "call 02_create_env.cmd\n"
+        "call 03_install_gpu_torch.cmd\n"
+        "call 04_install_ent_ai_stack.cmd\n"
     )

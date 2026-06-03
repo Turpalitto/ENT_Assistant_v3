@@ -43,6 +43,7 @@ class InteractiveRefinementTests(unittest.TestCase):
         result = {
             "volumeName": "Case1",
             "preset": "CT PNS",
+            "measurements": [{"segment": "sinus_maxillary_left", "sourceSegment": "sinus_maxillary", "volume_ml": 12.0}],
             "sinusReport": {
                 "findingRows": [
                     {"structure": "sinus_maxillary_left", "details": "Refine this region."},
@@ -52,6 +53,7 @@ class InteractiveRefinementTests(unittest.TestCase):
         monai = build_monailabel_prompt_payload(result)
         vista = build_vista3d_prompt_payload(result)
         self.assertEqual(monai["prompts"][0]["label"], "sinus_maxillary_left")
+        self.assertIn("sinus_maxillary_left", monai["prompts"][0]["related_segments"])
         self.assertEqual(vista["targets"][0]["name"], "sinus_maxillary_left")
 
 

@@ -29,15 +29,11 @@ DEFAULT_SINUS_NNUNET_LABEL_MAP = {
 
 def detect_roundtrip_candidates(workspace_directory: str) -> Dict[str, object]:
     workspace = Path(workspace_directory)
-    nnunet_prediction = None
-    prediction_dir = workspace / "nnunet_prediction"
-    if prediction_dir.exists():
-        candidates = sorted(prediction_dir.glob("*.nii.gz"))
-        if candidates:
-            nnunet_prediction = str(candidates[0])
+    manifest = _load_workspace_manifest(workspace)
+    case_name = str((manifest.get("caseName") if manifest else "") or "")
+    nnunet_prediction = _find_best_nnunet_prediction(workspace, case_name)
 
-    totalseg_dir = workspace / "totalseg_output"
-    totalseg_available = totalseg_dir.exists() and any(totalseg_dir.glob("*.nii.gz"))
+    totalseg_dir = _find_totalseg_output_dir(workspace)
 
     generic_labelmap = workspace / "labelmap.nii.gz"
     if not generic_labelmap.exists():
@@ -46,7 +42,7 @@ def detect_roundtrip_candidates(workspace_directory: str) -> Dict[str, object]:
     return {
         "workspace": str(workspace),
         "nnunetPrediction": nnunet_prediction,
-        "totalsegmentatorOutputDir": str(totalseg_dir) if totalseg_available else None,
+        "totalsegmentatorOutputDir": str(totalseg_dir) if totalseg_dir else None,
         "genericLabelmap": str(generic_labelmap) if generic_labelmap else None,
     }
 
@@ -98,7 +94,7 @@ def _import_totalsegmentator_masks(output_dir: str, reference_volume_node) -> Di
             after = segmentation_node.GetSegmentation().GetNumberOfSegments()
             if after > before:
                 segment_id = segmentation_node.GetSegmentation().GetNthSegmentID(after - 1)
-                segmentation_node.GetSegmentation().GetSegment(segment_id).SetName(mask_path.stem.replace(".nii", ""))
+                segmentation_node.GetSegmentation().GetSegment(segment_id).SetName(_normalize_totalseg_segment_name(mask_path))
                 imported += 1
         finally:
             slicer.mrmlScene.RemoveNode(label_node)
@@ -160,3 +156,54 @@ def _import_multilabel_prediction_to_segmentation(label_node, volume_node, segme
         raise RuntimeError("nnU-Net prediction did not contain any labels mapped to known sinus structures.")
     segmentation_node.CreateClosedSurfaceRepresentation()
     segmentation_node.GetDisplayNode().SetVisibility3D(True)
+
+
+def _load_workspace_manifest(workspace: Path) -> Optional[Dict[str, object]]:
+    manifest_path = workspace / "ai_workspace_manifest.json"
+    if not manifest_path.exists():
+        return None
+    try:
+        return json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _find_best_nnunet_prediction(workspace: Path, case_name: str) -> Optional[str]:
+    candidates: List[Path] = []
+    for directory_name in ["nnunet_prediction", "predictions", "prediction", "inference", "output"]:
+        directory = workspace / directory_name
+        if directory.exists():
+            candidates.extend(sorted(directory.glob("*.nii.gz")))
+    if not candidates:
+        return None
+    case_key = case_name.lower().replace(" ", "_")
+    ranked = sorted(candidates, key=lambda path: _score_prediction_candidate(path, case_key), reverse=True)
+    return str(ranked[0])
+
+
+def _score_prediction_candidate(path: Path, case_key: str) -> int:
+    name = path.name.lower()
+    score = 0
+    if case_key and case_key in name:
+        score += 10
+    if "pred" in name or "prediction" in name:
+        score += 6
+    if "softmax" in name or "prob" in name:
+        score -= 8
+    if name.endswith(".nii.gz"):
+        score += 2
+    return score
+
+
+def _find_totalseg_output_dir(workspace: Path) -> Optional[Path]:
+    direct = workspace / "totalseg_output"
+    if direct.exists() and any(direct.glob("*.nii.gz")):
+        return direct
+    for directory in workspace.rglob("*"):
+        if directory.is_dir() and "totalseg" in directory.name.lower() and any(directory.glob("*.nii.gz")):
+            return directory
+    return None
+
+
+def _normalize_totalseg_segment_name(mask_path: Path) -> str:
+    return mask_path.stem.replace(".nii", "").replace("__", "_")

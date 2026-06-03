@@ -156,6 +156,19 @@ def launch_workspace_command(target_directory: str, command_name: str) -> Dict[s
     }
 
 
+def bootstrap_external_env(target_directory: str) -> Dict[str, object]:
+    target_dir = Path(target_directory)
+    command_path = target_dir / "env_setup" / "07_bootstrap_all.cmd"
+    if not command_path.exists():
+        raise RuntimeError(f"Bootstrap script was not found: {command_path}")
+    process = slicer.util.launchConsoleProcess(["cmd.exe", "/c", str(command_path)])
+    return {
+        "directory": str(target_dir),
+        "commandPath": str(command_path),
+        "pid": getattr(process, "pid", None),
+    }
+
+
 def import_roundtrip_workspace(workspace_directory: str, volume_node) -> Dict[str, object]:
     from ENT_Module.roundtrip_import import import_roundtrip_results
 

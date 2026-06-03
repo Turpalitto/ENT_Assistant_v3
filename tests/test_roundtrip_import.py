@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ENT_Module.roundtrip_import import detect_roundtrip_candidates
+from ENT_Module.roundtrip_import import detect_roundtrip_candidates, _score_prediction_candidate
 
 
 class RoundTripImportTests(unittest.TestCase):
@@ -19,6 +19,11 @@ class RoundTripImportTests(unittest.TestCase):
             self.assertTrue(result["nnunetPrediction"].endswith("case.nii.gz"))
             self.assertTrue(result["totalsegmentatorOutputDir"].endswith("totalseg_output"))
             self.assertTrue(result["genericLabelmap"].endswith("labelmap.nii.gz"))
+
+    def test_score_prediction_candidate_prefers_case_and_prediction_name(self):
+        base = _score_prediction_candidate(Path("random.nii.gz"), "case")
+        better = _score_prediction_candidate(Path("case_prediction.nii.gz"), "case")
+        self.assertGreater(better, base)
 
 
 if __name__ == "__main__":

@@ -89,14 +89,17 @@ def build_refinement_checklist(result: Dict[str, object]) -> List[Dict[str, str]
 
 def build_prompt_templates(result: Dict[str, object]) -> Dict[str, object]:
     report = result.get("sinusReport") or result.get("mriReport") or {}
+    measurements = result.get("measurements") or []
     targets = []
     for finding in report.get("findingRows") or []:
         structure = str(finding.get("structure", "")).strip()
         if structure:
+            related_segments = _find_related_segments(structure, measurements)
             targets.append(
                 {
                     "name": structure,
                     "target": structure,
+                    "relatedSegments": related_segments,
                     "positivePoints": [],
                     "negativePoints": [],
                     "boxes": [],
@@ -108,6 +111,7 @@ def build_prompt_templates(result: Dict[str, object]) -> Dict[str, object]:
             {
                 "name": "region_of_interest",
                 "target": "region_of_interest",
+                "relatedSegments": [],
                 "positivePoints": [],
                 "negativePoints": [],
                 "boxes": [],
@@ -132,6 +136,7 @@ def build_monailabel_prompt_payload(result: Dict[str, object]) -> Dict[str, obje
                 "foreground": row.get("positivePoints", []),
                 "background": row.get("negativePoints", []),
                 "boxes": row.get("boxes", []),
+                "related_segments": row.get("relatedSegments", []),
                 "notes": row.get("notes", ""),
             }
             for row in generic.get("targets", [])
@@ -149,11 +154,31 @@ def build_vista3d_prompt_payload(result: Dict[str, object]) -> Dict[str, object]
                 "positive_points_ijk": row.get("positivePoints", []),
                 "negative_points_ijk": row.get("negativePoints", []),
                 "bounding_box_ijk": row.get("boxes", []),
+                "related_segments": row.get("relatedSegments", []),
                 "notes": row.get("notes", ""),
             }
             for row in generic.get("targets", [])
         ],
     }
+
+
+def _find_related_segments(structure: str, measurements: List[Dict[str, object]]) -> List[str]:
+    structure_key = structure.lower()
+    matches: List[str] = []
+    for row in measurements:
+        segment_name = str(row.get("segment", ""))
+        source_segment = str(row.get("sourceSegment", ""))
+        haystack = f"{segment_name} {source_segment}".lower()
+        if structure_key in haystack or haystack.replace("_", " ").find(structure_key.replace("_", " ")) >= 0:
+            matches.append(segment_name)
+    if matches:
+        return sorted(set(matches))
+    token_matches = []
+    for row in measurements:
+        segment_name = str(row.get("segment", ""))
+        if any(token for token in structure_key.replace("_", " ").split() if token and token in segment_name.lower()):
+            token_matches.append(segment_name)
+    return sorted(set(token_matches))[:5]
 
 
 def _build_refinement_notes(checklist: List[Dict[str, str]]) -> str:
